@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+pyyaml
+google-genai
+google-cloud-secret-manager
+PyJWT
+requests
+cryptography

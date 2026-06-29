@@ -1,0 +1,11 @@
+diff --git a/k8s/deployment.yaml b/k8s/deployment.yaml
+index 1111111..2222222 100644
+--- a/k8s/deployment.yaml
++++ b/k8s/deployment.yaml
+@@ -8,6 +8,8 @@ spec:
+       containers:
+         - name: app
+           image: nginx:latest
++          securityContext:
++            privileged: true
++          resources: {}

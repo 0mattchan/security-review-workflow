@@ -1,0 +1,33 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-f"
+      - "deployment/Dockerfile"
+      - "-t"
+      - "asia-northeast1-docker.pkg.dev/$PROJECT_ID/devsecops-repo/devsecops-agent:latest"
+      - "."
+
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "asia-northeast1-docker.pkg.dev/$PROJECT_ID/devsecops-repo/devsecops-agent:latest"
+
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "gcloud"
+    args:
+      - "run"
+      - "deploy"
+      - "devsecops-agent"
+      - "--image"
+      - "asia-northeast1-docker.pkg.dev/$PROJECT_ID/devsecops-repo/devsecops-agent:latest"
+      - "--region"
+      - "asia-northeast1"
+      - "--platform"
+      - "managed"
+      - "--allow-unauthenticated"
+      - "--service-account"
+      - "run-sa@$PROJECT_ID.iam.gserviceaccount.com"
+
+images:
+  - "asia-northeast1-docker.pkg.dev/$PROJECT_ID/devsecops-repo/devsecops-agent:latest"
