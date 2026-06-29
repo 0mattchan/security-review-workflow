@@ -496,7 +496,7 @@ def build_markdown_report(owner, repo, pr_number, findings):
     lines = []
     lines.append("# Security Review Report")
     lines.append("")
-    lines.append("## 🧪 Summary")
+    lines.append("## Summary")
     lines.append(f"- Repository: `{owner}/{repo}`")
     lines.append(f"- Pull Request: `#{pr_number}`")
     lines.append(f"- Total Issues: {len(findings)}")
