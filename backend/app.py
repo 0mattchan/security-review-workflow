@@ -631,6 +631,9 @@ def _normalize_assessment_text(value):
 def build_markdown_report_with_gemini(owner, repo, pr_number, findings, diff_text):
     base_markdown = build_markdown_report(owner, repo, pr_number, findings)
 
+    if not findings:
+        return base_markdown
+
     try:
         from backend.gemini_engine import analyze_with_gemini
 
