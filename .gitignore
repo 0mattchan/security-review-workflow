@@ -1,0 +1,12 @@
+secrets/
+*.pem
+*.key
+.env
+.git-credentials
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+frontend/web/dist/
+_local_backups/
+*.bak*
