@@ -884,30 +884,43 @@ def build_slack_review_blocks(owner, repo, pr_number, findings, comment_url=None
         issue_text = "\\n\\n".join(issue_lines)
 
     pr_url = f"https://github.com/{owner}/{repo}/pull/{pr_number}"
+    dashboard_base_url = (
+        os.getenv("DASHBOARD_URL")
+        or os.getenv("SERVICE_URL")
+        or "https://devsecops-agent-35u6z2s5dq-an.a.run.app"
+    ).rstrip("/")
+    dashboard_url = f"{dashboard_base_url}/dashboard?lang=en"
 
-    buttons = [
+    buttons = []
+
+    if comment_url:
+        buttons.append({
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": "Open Review"
+            },
+            "url": comment_url
+        })
+
+    buttons.extend([
         {
             "type": "button",
             "text": {
                 "type": "plain_text",
-                "text": "Open Pull Request"
+                "text": "Open PR"
             },
             "url": pr_url
+        },
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": "Dashboard"
+            },
+            "url": dashboard_url
         }
-    ]
-
-    if comment_url:
-        buttons.insert(
-            0,
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": "Open Review"
-                },
-                "url": comment_url
-            }
-        )
+    ])
 
     return [
         {
