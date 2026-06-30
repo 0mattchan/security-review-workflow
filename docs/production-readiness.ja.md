@@ -58,3 +58,43 @@
 | L1 | 診断のみ |
 | L2 | 修正PR作成まで |
 | L3 | 承認後に自動適用 |
+
+## 本番L2運用・拡張検出の達成状況
+
+現在の本番運用モードは L2 です。
+
+- L1: 診断、GitHub PRコメント、Slack通知、履歴保存
+- L2: Slack承認後の修正PR作成、既存修正PRの重複防止
+- L3: 自動適用は無効化。安全上、現時点では運用対象外
+
+確認済みのレビュー対象:
+
+- Kubernetes manifest
+- GitHub Actions / CI/CD workflow
+- Cloud Run / Cloud Build deploy設定
+- Dockerfile / Container設定
+- Terraform / IAM設定
+
+確認済みデモPR:
+
+- PR #2: Kubernetes脆弱manifestレビュー
+  - Total Issues: 8
+  - High: 1
+  - Medium: 3
+  - Low: 4
+  - Decision: BLOCK
+
+- PR #6: 拡張セキュリティレビュー
+  - Total Issues: 17
+  - High: 12
+  - Medium: 4
+  - Low: 1
+  - Decision: BLOCK
+  - Labels: demo, do-not-merge
+
+安全設計:
+
+- 自動mergeなし
+- 自動適用なし
+- 修正PR作成はL2承認後のみ
+- 危険なデモPRは do-not-merge ラベルで保護
