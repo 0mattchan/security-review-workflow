@@ -1123,14 +1123,28 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
             })
 
     if command == "/agent-approve":
-        usage = (
-            "Usage:\n"
-            "/agent-approve owner/repo#pr_number\n"
-            "Example:\n"
-            "/agent-approve 0mattchan/devsecops-agent#2"
-        )
+        approve_lang = "ja" if any(word in text.lower().split() for word in ["ja", "jp", "japanese", "日本語"]) else "en"
+        approve_target = " ".join([
+            word for word in text.split()
+            if word.lower() not in ["ja", "jp", "japanese", "日本語", "en", "english", "英語"]
+        ]).strip()
 
-        if not text:
+        if approve_lang == "ja":
+            usage = (
+                "使い方:\n"
+                "/agent-approve owner/repo#pr_number ja\n"
+                "例:\n"
+                "/agent-approve 0mattchan/devsecops-agent#2 ja"
+            )
+        else:
+            usage = (
+                "Usage:\n"
+                "/agent-approve owner/repo#pr_number en\n"
+                "Example:\n"
+                "/agent-approve 0mattchan/devsecops-agent#2 en"
+            )
+
+        if not approve_target:
             return JSONResponse({
                 "response_type": "ephemeral",
                 "text": usage,
@@ -1140,7 +1154,7 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
             import re
             from backend.github_pr import find_existing_remediation_pr
 
-            match = re.search(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)", text)
+            match = re.search(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)", approve_target)
 
             if not match:
                 return JSONResponse({
@@ -1177,16 +1191,28 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
                 except Exception as history_error:
                     print(f"Approval history record failed: {history_error}", flush=True)
 
-                return JSONResponse({
-                    "response_type": "ephemeral",
-                    "text": (
+                if approve_lang == "ja":
+                    existing_text = (
+                        "修正PRは既に存在します。\n"
+                        f"Repository: {owner}/{repo}\n"
+                        f"Source Pull Request: #{pr_number}\n"
+                        f"Status: {display_state}\n"
+                        f"Branch: {head_ref}\n"
+                        f"Pull Request: {pr_url}"
+                    )
+                else:
+                    existing_text = (
                         "Remediation pull request already exists.\n"
                         f"Repository: {owner}/{repo}\n"
                         f"Source Pull Request: #{pr_number}\n"
                         f"Status: {display_state}\n"
                         f"Branch: {head_ref}\n"
                         f"Pull Request: {pr_url}"
-                    ),
+                    )
+
+                return JSONResponse({
+                    "response_type": "ephemeral",
+                    "text": existing_text,
                 })
 
             background_tasks.add_task(
@@ -1197,21 +1223,31 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
                 response_url,
             )
 
-            return {
-                "response_type": "ephemeral",
-                "text": (
+            if approve_lang == "ja":
+                started_text = (
+                    "修正ワークフローを開始しました。\n"
+                    f"Repository: {owner}/{repo}\n"
+                    f"Pull Request: #{pr_number}\n"
+                    "対応可能な修正がある場合、修正PRを作成します。"
+                )
+            else:
+                started_text = (
                     "Remediation workflow started.\n"
                     f"Repository: {owner}/{repo}\n"
                     f"Pull Request: #{pr_number}\n"
                     "A remediation pull request will be created if supported fixes are available."
-                ),
-            }
+                )
+
+            return JSONResponse({
+                "response_type": "ephemeral",
+                "text": started_text,
+            }, background=background_tasks)
 
         except Exception as e:
             print(f"Slash approve request failed: {e}", flush=True)
             return JSONResponse({
                 "response_type": "ephemeral",
-                "text": "Remediation workflow request failed. Please check Cloud Run logs.",
+                "text": "修正ワークフローのリクエストに失敗しました。Cloud Run logs を確認してください。" if approve_lang == "ja" else "Remediation workflow request failed. Please check Cloud Run logs.",
             })
 
     return JSONResponse({
