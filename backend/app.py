@@ -1042,14 +1042,28 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
         })
 
     if command == "/agent-diagnose":
-        usage = (
-            "Usage:\n"
-            "/agent-diagnose owner/repo#pr_number\n"
-            "Example:\n"
-            "/agent-diagnose 0mattchan/devsecops-agent#2"
-        )
+        diagnose_lang = "ja" if any(word in text.lower().split() for word in ["ja", "jp", "japanese", "日本語"]) else "en"
+        diagnose_target = " ".join([
+            word for word in text.split()
+            if word.lower() not in ["ja", "jp", "japanese", "日本語", "en", "english", "英語"]
+        ]).strip()
 
-        if not text:
+        if diagnose_lang == "ja":
+            usage = (
+                "使い方:\n"
+                "/agent-diagnose owner/repo#pr_number ja\n"
+                "例:\n"
+                "/agent-diagnose 0mattchan/devsecops-agent#2 ja"
+            )
+        else:
+            usage = (
+                "Usage:\n"
+                "/agent-diagnose owner/repo#pr_number en\n"
+                "Example:\n"
+                "/agent-diagnose 0mattchan/devsecops-agent#2 en"
+            )
+
+        if not diagnose_target:
             return JSONResponse({
                 "response_type": "ephemeral",
                 "text": usage,
@@ -1058,7 +1072,7 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
         try:
             import re
 
-            match = re.search(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)", text)
+            match = re.search(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)", diagnose_target)
 
             if not match:
                 return JSONResponse({
@@ -1081,21 +1095,31 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
                 response_url,
             )
 
-            return JSONResponse({
-                "response_type": "ephemeral",
-                "text": (
+            if diagnose_lang == "ja":
+                started_text = (
+                    "セキュリティレビューを開始しました。\n"
+                    f"Repository: {owner}/{repo}\n"
+                    f"Pull Request: #{pr_number}\n"
+                    "結果はまもなく投稿されます。"
+                )
+            else:
+                started_text = (
                     "Security review started.\n"
                     f"Repository: {owner}/{repo}\n"
                     f"Pull Request: #{pr_number}\n"
                     "The result will be posted shortly."
-                ),
+                )
+
+            return JSONResponse({
+                "response_type": "ephemeral",
+                "text": started_text,
             }, background=background_tasks)
 
         except Exception as e:
             print(f"Slash diagnose request failed: {e}", flush=True)
             return JSONResponse({
                 "response_type": "ephemeral",
-                "text": "Security review request failed. Please check Cloud Run logs.",
+                "text": "セキュリティレビューのリクエストに失敗しました。Cloud Run logs を確認してください。" if diagnose_lang == "ja" else "Security review request failed. Please check Cloud Run logs.",
             })
 
     if command == "/agent-approve":
