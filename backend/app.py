@@ -265,156 +265,125 @@ async def slack_command(request: Request):
 
 
 
+
 @app.get("/dashboard")
-async def dashboard():
+async def dashboard(lang: str = "en"):
+    from html import escape
     from fastapi.responses import HTMLResponse
+
+    is_ja = str(lang).lower().startswith("ja")
+
+    t = {
+        "title": "セキュリティレビュー ダッシュボード" if is_ja else "Security Review Workflow Dashboard",
+        "subtitle": "GitHub PRレビュー、Slack承認、修正PR、履歴を確認できます。" if is_ja else "GitHub PR security review, Slack approval, remediation PR, and history overview.",
+        "cloud_run": "Cloud Run",
+        "github_webhook": "GitHub Webhook",
+        "slack_commands": "Slack Commands",
+        "history_records": "履歴件数" if is_ja else "History Records",
+        "recent_history": "最近の履歴" if is_ja else "Recent History",
+        "created_at": "作成日時" if is_ja else "Created At",
+        "event_type": "イベント種別" if is_ja else "Event Type",
+        "repository": "リポジトリ" if is_ja else "Repository",
+        "pr": "PR",
+        "total_issues": "検出件数" if is_ja else "Total Issues",
+        "url": "URL",
+        "active": "稼働中" if is_ja else "Active",
+        "enabled": "有効" if is_ja else "Enabled",
+        "no_history": "履歴が見つかりません。" if is_ja else "No history records found.",
+        "api": "API",
+        "switch": "English" if is_ja else "日本語",
+        "switch_url": "/dashboard?lang=en" if is_ja else "/dashboard?lang=ja",
+    }
 
     try:
         from backend.history_store import list_history
         history = list_history(30)
+        history_error = ""
     except Exception as e:
         history = []
         history_error = str(e)
-    else:
-        history_error = ""
 
     rows = []
 
     for item in history:
         payload = item.get("payload") or {}
+        url = (
+            payload.get("review_url")
+            or payload.get("existing_pr_url")
+            or payload.get("remediation_pr_url")
+            or payload.get("comment_url")
+            or ""
+        )
+
+        url_html = f"<a href='{escape(str(url))}' target='_blank'>{escape(str(url))}</a>" if url else ""
+
         rows.append(
             "<tr>"
-            f"<td>{item.get('created_at', '')}</td>"
-            f"<td>{item.get('event_type', '')}</td>"
-            f"<td>{payload.get('owner', '')}/{payload.get('repo', '')}</td>"
-            f"<td>{payload.get('pr_number') or payload.get('source_pr_number') or ''}</td>"
-            f"<td>{payload.get('total_issues', '')}</td>"
-            f"<td>{payload.get('review_url') or payload.get('existing_pr_url') or payload.get('remediation_pr_url') or ''}</td>"
+            f"<td>{escape(str(item.get('created_at', '')))}</td>"
+            f"<td>{escape(str(item.get('event_type', '')))}</td>"
+            f"<td>{escape(str(payload.get('owner', '')))}/{escape(str(payload.get('repo', '')))}</td>"
+            f"<td>{escape(str(payload.get('pr_number') or payload.get('source_pr_number') or ''))}</td>"
+            f"<td>{escape(str(payload.get('total_issues', '')))}</td>"
+            f"<td>{url_html}</td>"
             "</tr>"
         )
 
-    rows_html = "\n".join(rows) if rows else (
-        "<tr><td colspan='6'>No history records found.</td></tr>"
-    )
-
-    error_html = ""
-    if history_error:
-        error_html = f"<div class='error'>History load error: {history_error}</div>"
+    rows_html = "\n".join(rows) if rows else f"<tr><td colspan='6'>{t['no_history']}</td></tr>"
+    error_html = f"<div class='error'>History load error: {escape(history_error)}</div>" if history_error else ""
 
     html = f"""
 <!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Security Review Workflow Dashboard</title>
+  <title>{t['title']}</title>
   <style>
-    body {{
-      font-family: Arial, sans-serif;
-      margin: 32px;
-      color: #1f2937;
-      background: #f9fafb;
-    }}
-    h1 {{
-      margin-bottom: 8px;
-    }}
-    .subtitle {{
-      color: #6b7280;
-      margin-bottom: 24px;
-    }}
-    .cards {{
-      display: grid;
-      grid-template-columns: repeat(4, minmax(160px, 1fr));
-      gap: 16px;
-      margin-bottom: 28px;
-    }}
-    .card {{
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 18px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-    }}
-    .card .label {{
-      color: #6b7280;
-      font-size: 13px;
-      margin-bottom: 8px;
-    }}
-    .card .value {{
-      font-size: 22px;
-      font-weight: bold;
-    }}
-    table {{
-      width: 100%;
-      border-collapse: collapse;
-      background: white;
-      border-radius: 12px;
-      overflow: hidden;
-      border: 1px solid #e5e7eb;
-    }}
-    th, td {{
-      text-align: left;
-      padding: 12px;
-      border-bottom: 1px solid #e5e7eb;
-      font-size: 14px;
-      vertical-align: top;
-    }}
-    th {{
-      background: #f3f4f6;
-      color: #374151;
-    }}
-    tr:last-child td {{
-      border-bottom: none;
-    }}
-    .error {{
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      color: #991b1b;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-    }}
-    .footer {{
-      margin-top: 24px;
-      color: #6b7280;
-      font-size: 13px;
-    }}
+    body {{ font-family: Arial, sans-serif; margin: 32px; color: #1f2937; background: #f9fafb; }}
+    h1 {{ margin-bottom: 8px; }}
+    .top {{ display: flex; justify-content: space-between; align-items: center; gap: 16px; }}
+    .subtitle {{ color: #6b7280; margin-bottom: 24px; }}
+    .lang {{ background: white; border: 1px solid #d1d5db; border-radius: 999px; padding: 8px 14px; text-decoration: none; color: #111827; font-size: 14px; }}
+    .cards {{ display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }}
+    .card {{ background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }}
+    .label {{ color: #6b7280; font-size: 13px; margin-bottom: 8px; }}
+    .value {{ font-size: 22px; font-weight: bold; }}
+    table {{ width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; }}
+    th, td {{ text-align: left; padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; vertical-align: top; }}
+    th {{ background: #f3f4f6; color: #374151; }}
+    tr:last-child td {{ border-bottom: none; }}
+    a {{ color: #2563eb; word-break: break-all; }}
+    .error {{ background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 8px; margin-bottom: 16px; }}
+    .footer {{ margin-top: 24px; color: #6b7280; font-size: 13px; }}
   </style>
 </head>
 <body>
-  <h1>Security Review Workflow Dashboard</h1>
-  <div class="subtitle">GitHub PR security review, Slack approval, remediation PR, and history overview.</div>
+  <div class="top">
+    <div>
+      <h1>{t['title']}</h1>
+      <div class="subtitle">{t['subtitle']}</div>
+    </div>
+    <a class="lang" href="{t['switch_url']}">{t['switch']}</a>
+  </div>
 
   {error_html}
 
   <div class="cards">
-    <div class="card">
-      <div class="label">Cloud Run</div>
-      <div class="value">Active</div>
-    </div>
-    <div class="card">
-      <div class="label">GitHub Webhook</div>
-      <div class="value">Enabled</div>
-    </div>
-    <div class="card">
-      <div class="label">Slack Commands</div>
-      <div class="value">3</div>
-    </div>
-    <div class="card">
-      <div class="label">History Records</div>
-      <div class="value">{len(history)}</div>
-    </div>
+    <div class="card"><div class="label">{t['cloud_run']}</div><div class="value">{t['active']}</div></div>
+    <div class="card"><div class="label">{t['github_webhook']}</div><div class="value">{t['enabled']}</div></div>
+    <div class="card"><div class="label">{t['slack_commands']}</div><div class="value">3</div></div>
+    <div class="card"><div class="label">{t['history_records']}</div><div class="value">{len(history)}</div></div>
   </div>
 
-  <h2>Recent History</h2>
+  <h2>{t['recent_history']}</h2>
   <table>
     <thead>
       <tr>
-        <th>Created At</th>
-        <th>Event Type</th>
-        <th>Repository</th>
-        <th>PR</th>
-        <th>Total Issues</th>
-        <th>URL</th>
+        <th>{t['created_at']}</th>
+        <th>{t['event_type']}</th>
+        <th>{t['repository']}</th>
+        <th>{t['pr']}</th>
+        <th>{t['total_issues']}</th>
+        <th>{t['url']}</th>
       </tr>
     </thead>
     <tbody>
@@ -422,15 +391,12 @@ async def dashboard():
     </tbody>
   </table>
 
-  <div class="footer">
-    API: /api/history?limit=20
-  </div>
+  <div class="footer">{t['api']}: /api/history?limit=20</div>
 </body>
 </html>
 """
 
     return HTMLResponse(html)
-
 
 @app.get("/api/history")
 async def api_history(limit: int = 20):
