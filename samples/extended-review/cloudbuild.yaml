@@ -1,0 +1,11 @@
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    args:
+      - gcloud
+      - run
+      - deploy
+      - demo-app
+      - --allow-unauthenticated
+      - --image
+      - demo-app:latest
+      - --set-env-vars=API_KEY=demo_fake_key_123456
