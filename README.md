@@ -2,7 +2,7 @@
 
 Security Review Workflow is a Cloud Run based automation system for GitHub pull request security review.
 
-It reviews Kubernetes manifest changes, posts a security review report to GitHub, sends Slack notifications, and creates remediation pull requests after Slack approval.
+It reviews Kubernetes, Cloud Run, CI/CD, Dockerfile, and IAM-related pull request changes, posts a security review report to GitHub, sends Slack notifications, and creates remediation pull requests after Slack approval.
 
 ## Current Status
 
@@ -20,7 +20,7 @@ It reviews Kubernetes manifest changes, posts a security review report to GitHub
 | Remediation pull request creation | Completed |
 | Duplicate remediation PR prevention | Completed |
 | Review and approval history storage | Completed |
-| Expanded Kubernetes detection rules | Completed |
+| Expanded security detection rules | Completed |
 | Web dashboard | Completed |
 
 ## Architecture
@@ -80,3 +80,5 @@ gcloud builds submit --config deployment/cloudbuild.yaml .
 ```text
 https://devsecops-agent-35u6z2s5dq-an.a.run.app
 ```
+
+- 要件達成チェックリスト: docs/requirements-checklist.ja.md

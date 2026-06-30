@@ -2,7 +2,7 @@
 
 Security Review Workflow は、GitHub Pull Request のセキュリティレビューを自動化する Cloud Run ベースのシステムです。
 
-Kubernetes manifest の変更内容を解析し、GitHub PRコメント、Slack通知、Slack承認、修正PR作成、履歴保存、Webダッシュボード表示までを一連のワークフローとして実行します。
+Kubernetes、Cloud Run、CI/CD、Dockerfile、IAM関連の変更内容を解析し、GitHub PRコメント、Slack通知、Slack承認、修正PR作成、履歴保存、Webダッシュボード表示までを一連のワークフローとして実行します。
 
 ## 主な機能
 
@@ -57,3 +57,5 @@ High: 1 / Medium: 3 / Low: 4
 - 自動適用: 無効
 
 L2/L3への移行は、実運用テストと権限レビュー後に行います。
+
+- 要件達成チェックリスト: docs/requirements-checklist.ja.md
