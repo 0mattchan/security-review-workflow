@@ -46,29 +46,120 @@ def scan_manifest(manifest):
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
+    <!doctype html>
     <html>
     <head>
-        <title>DevSecOps AI Agent</title>
+        <meta charset="utf-8">
+        <title>Security Review Workflow</title>
+        <style>
+            body {
+                margin: 0;
+                font-family: Arial, sans-serif;
+                background: #f3f4f6;
+                color: #111827;
+            }
+
+            .container {
+                max-width: 960px;
+                margin: 0 auto;
+                padding: 32px;
+            }
+
+            .hero {
+                background: linear-gradient(135deg, #111827, #1f2937);
+                color: white;
+                border-radius: 20px;
+                padding: 28px;
+                margin-bottom: 20px;
+            }
+
+            h1 {
+                margin: 0 0 8px 0;
+            }
+
+            .subtitle {
+                color: #d1d5db;
+                line-height: 1.6;
+            }
+
+            .panel {
+                background: white;
+                border: 1px solid #e5e7eb;
+                border-radius: 16px;
+                padding: 20px;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            }
+
+            textarea {
+                width: 100%;
+                min-height: 360px;
+                box-sizing: border-box;
+                border: 1px solid #d1d5db;
+                border-radius: 12px;
+                padding: 14px;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                font-size: 13px;
+            }
+
+            button {
+                margin-top: 14px;
+                background: #2563eb;
+                color: white;
+                border: none;
+                border-radius: 999px;
+                padding: 10px 18px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+
+            .links {
+                margin-top: 14px;
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+
+            a {
+                color: #2563eb;
+                text-decoration: none;
+                font-weight: 700;
+            }
+        </style>
     </head>
     <body>
-        <h1>DevSecOps AI Agent</h1>
+        <div class="container">
+            <div class="hero">
+                <h1>Security Review Workflow</h1>
+                <div class="subtitle">
+                    Review Kubernetes manifests and pull request security findings.
+                    For production operations, use the dashboard and Slack approval workflow.
+                </div>
+            </div>
 
-        <form action="/diagnose" method="post">
-            <textarea
-                name="manifest"
-                rows="20"
-                cols="100"
-            ></textarea>
+            <div class="panel">
+                <form action="/diagnose" method="post">
+                    <textarea
+                        name="manifest"
+                        placeholder="Paste a Kubernetes manifest here..."
+                    ></textarea>
 
-            <br><br>
+                    <br>
 
-            <button type="submit">
-                Diagnose
-            </button>
-        </form>
+                    <button type="submit">Run Review</button>
+                </form>
+
+                <div class="links">
+                    <a href="/dashboard?lang=ja">Dashboard JA</a>
+                    <a href="/dashboard?lang=en">Dashboard EN</a>
+                    <a href="/api/policy">Policy API</a>
+                    <a href="/api/history?limit=5">History API</a>
+                </div>
+            </div>
+        </div>
     </body>
     </html>
     """
+
 
 @app.post("/diagnose", response_class=HTMLResponse)
 async def diagnose(manifest: str = Form(...)):

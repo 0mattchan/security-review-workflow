@@ -316,35 +316,37 @@ async def dashboard(lang: str = "en"):
     is_ja = str(lang).lower().startswith("ja")
 
     t = {
-        "title": "セキュリティレビュー ダッシュボード" if is_ja else "Security Review Workflow Dashboard",
-        "subtitle": "GitHub PRレビュー、Slack承認、修正PR、履歴を確認できます。" if is_ja else "GitHub PR security review, Slack approval, remediation PR, and history overview.",
+        "title": "セキュリティレビュー ダッシュボード" if is_ja else "Security Review Dashboard",
+        "subtitle": "Pull Requestのリスク、承認状態、修正PR、履歴を一画面で確認できます。" if is_ja else "Review pull request risk, approval state, remediation workflow, and history in one place.",
         "cloud_run": "Cloud Run",
         "github_webhook": "GitHub Webhook",
         "slack_commands": "Slack Commands",
         "history_records": "履歴件数" if is_ja else "History Records",
-        "recent_history": "最近の履歴" if is_ja else "Recent History",
+        "recent_history": "最近のレビュー履歴" if is_ja else "Recent Review History",
         "created_at": "作成日時" if is_ja else "Created At",
-        "event_type": "イベント種別" if is_ja else "Event Type",
+        "event_type": "イベント" if is_ja else "Event",
         "repository": "リポジトリ" if is_ja else "Repository",
         "pr": "PR",
-        "total_issues": "検出件数" if is_ja else "Total Issues",
+        "issues": "検出" if is_ja else "Issues",
         "duration": "処理時間" if is_ja else "Duration",
         "status": "状態" if is_ja else "Status",
-        "latest_diagnose_duration": "最新診断時間" if is_ja else "Latest Diagnose Duration",
-        "latest_approval_duration": "最新修正時間" if is_ja else "Latest Approval Duration",
         "latest_total": "最新検出件数" if is_ja else "Latest Issues",
-        "latest_high": "最新High" if is_ja else "Latest High",
-        "latest_medium": "最新Medium" if is_ja else "Latest Medium",
-        "latest_low": "最新Low" if is_ja else "Latest Low",
-        "latest_decision": "最新判断" if is_ja else "Latest Decision",
-        "latest_action_level": "アクションレベル" if is_ja else "Action Level",
-        "url": "URL",
+        "latest_high": "High",
+        "latest_medium": "Medium",
+        "latest_low": "Low",
+        "latest_decision": "判定" if is_ja else "Decision",
+        "latest_action_level": "運用モード" if is_ja else "Mode",
+        "latest_diagnose_duration": "最新診断時間" if is_ja else "Latest Review Time",
+        "latest_approval_duration": "最新修正時間" if is_ja else "Latest Remediation Time",
+        "url": "リンク" if is_ja else "Link",
         "active": "稼働中" if is_ja else "Active",
         "enabled": "有効" if is_ja else "Enabled",
         "no_history": "履歴が見つかりません。" if is_ja else "No history records found.",
         "api": "API",
         "switch": "English" if is_ja else "日本語",
         "switch_url": "/dashboard?lang=en" if is_ja else "/dashboard?lang=ja",
+        "safe_note": "L2: 承認後に修正PRを作成。自動適用は無効です。" if is_ja else "L2: remediation PRs require approval. Auto apply is disabled.",
+        "open": "開く" if is_ja else "Open",
     }
 
     try:
@@ -369,6 +371,30 @@ async def dashboard(lang: str = "en"):
 
         return f"{seconds:.1f}s"
 
+    def badge(value, kind="neutral"):
+        safe_value = escape(str(value or "-"))
+        return f"<span class='badge badge-{kind}'>{safe_value}</span>"
+
+    def decision_kind(value):
+        value = str(value or "").upper()
+        if value == "BLOCK":
+            return "high"
+        if value == "WARN":
+            return "medium"
+        if value == "PASS":
+            return "low"
+        return "neutral"
+
+    def event_kind(value):
+        value = str(value or "")
+        if "duplicate" in value:
+            return "medium"
+        if value.endswith("_completed"):
+            return "low"
+        if value.endswith("_failed") or "error" in value:
+            return "high"
+        return "neutral"
+
     latest_diagnose_duration = ""
     latest_approval_duration = ""
     latest_total = "-"
@@ -379,35 +405,40 @@ async def dashboard(lang: str = "en"):
     latest_action_level = "-"
 
     for history_item in history:
-        history_payload = history_item.get("payload") or {}
-        history_duration = format_duration(history_payload.get("duration_seconds"))
+        payload = history_item.get("payload") or {}
+        event_type = history_item.get("event_type")
+        duration = format_duration(payload.get("duration_seconds"))
 
-        if not history_duration:
-            continue
+        if event_type == "diagnose_completed" and latest_total == "-":
+            latest_total = str(payload.get("total_issues", "-"))
+            latest_high = str(payload.get("high", "-"))
+            latest_medium = str(payload.get("medium", "-"))
+            latest_low = str(payload.get("low", "-"))
+            latest_decision = str(payload.get("decision", "-"))
+            latest_action_level = str(payload.get("action_level", "-"))
 
-        history_event_type = history_item.get("event_type")
+        if duration and not latest_diagnose_duration and event_type == "diagnose_completed":
+            latest_diagnose_duration = duration
 
-        if history_event_type == "diagnose_completed" and latest_total == "-":
-            latest_total = str(history_payload.get("total_issues", "-"))
-            latest_high = str(history_payload.get("high", "-"))
-            latest_medium = str(history_payload.get("medium", "-"))
-            latest_low = str(history_payload.get("low", "-"))
-            latest_decision = str(history_payload.get("decision", "-"))
-            latest_action_level = str(history_payload.get("action_level", "-"))
+        if duration and not latest_approval_duration and event_type == "approval_completed":
+            latest_approval_duration = duration
 
-        if not latest_diagnose_duration and history_event_type == "diagnose_completed":
-            latest_diagnose_duration = history_duration
-
-        if not latest_approval_duration and history_event_type == "approval_completed":
-            latest_approval_duration = history_duration
-
-        if latest_diagnose_duration and latest_approval_duration:
+        if latest_diagnose_duration and latest_approval_duration and latest_total != "-":
             break
 
     rows = []
 
     for item in history:
         payload = item.get("payload") or {}
+        event_type = str(item.get("event_type", ""))
+        repo = f"{payload.get('owner', '')}/{payload.get('repo', '')}".strip("/")
+        pr_number = payload.get("pr_number") or payload.get("source_pr_number") or ""
+        total = payload.get("total_issues", "")
+        high = payload.get("high", "")
+        medium = payload.get("medium", "")
+        low = payload.get("low", "")
+        decision = payload.get("decision", "")
+
         url = (
             payload.get("review_url")
             or payload.get("existing_pr_url")
@@ -416,25 +447,50 @@ async def dashboard(lang: str = "en"):
             or ""
         )
 
-        url_html = f"<a href='{escape(str(url))}' target='_blank'>{escape(str(url))}</a>" if url else ""
-        duration_html = escape(format_duration(payload.get("duration_seconds")))
-
         raw_status = (
             payload.get("status")
             or payload.get("existing_pr_state")
-            or ("completed" if str(item.get("event_type", "")).endswith("_completed") else "")
+            or ("completed" if event_type.endswith("_completed") else "")
         )
-        status_html = escape(str(raw_status))
+
+        if total != "":
+            issue_html = (
+                f"<div class='issue-total'>{escape(str(total))}</div>"
+                f"<div class='severity-line'>"
+                f"<span class='sev high'>H {escape(str(high))}</span>"
+                f"<span class='sev medium'>M {escape(str(medium))}</span>"
+                f"<span class='sev low'>L {escape(str(low))}</span>"
+                f"</div>"
+            )
+        else:
+            issue_html = "-"
+
+        if decision:
+            status_html = badge(decision, decision_kind(decision))
+        elif raw_status:
+            status_html = badge(raw_status, event_kind(event_type))
+        else:
+            status_html = badge("-", "neutral")
+
+        url_html = (
+            f"<a class='button-link' href='{escape(str(url))}' target='_blank'>{t['open']}</a>"
+            if url else ""
+        )
+
+        pr_html = (
+            f"<a href='https://github.com/{escape(str(repo))}/pull/{escape(str(pr_number))}' target='_blank'>#{escape(str(pr_number))}</a>"
+            if repo and pr_number else escape(str(pr_number))
+        )
 
         rows.append(
             "<tr>"
-            f"<td>{escape(str(item.get('created_at', '')))}</td>"
-            f"<td>{escape(str(item.get('event_type', '')))}</td>"
+            f"<td class='nowrap'>{escape(str(item.get('created_at', '')))}</td>"
+            f"<td><code>{escape(event_type)}</code></td>"
             f"<td>{status_html}</td>"
-            f"<td>{escape(str(payload.get('owner', '')))}/{escape(str(payload.get('repo', '')))}</td>"
-            f"<td>{escape(str(payload.get('pr_number') or payload.get('source_pr_number') or ''))}</td>"
-            f"<td>{escape(str(payload.get('total_issues', '')))}</td>"
-            f"<td>{duration_html}</td>"
+            f"<td>{escape(repo)}</td>"
+            f"<td>{pr_html}</td>"
+            f"<td>{issue_html}</td>"
+            f"<td class='nowrap'>{escape(format_duration(payload.get('duration_seconds')) or '-')}</td>"
             f"<td>{url_html}</td>"
             "</tr>"
         )
@@ -449,75 +505,355 @@ async def dashboard(lang: str = "en"):
   <meta charset="utf-8">
   <title>{t['title']}</title>
   <style>
-    body {{ font-family: Arial, sans-serif; margin: 32px; color: #1f2937; background: #f9fafb; }}
-    h1 {{ margin-bottom: 8px; }}
-    .top {{ display: flex; justify-content: space-between; align-items: center; gap: 16px; }}
-    .subtitle {{ color: #6b7280; margin-bottom: 24px; }}
-    .lang {{ background: white; border: 1px solid #d1d5db; border-radius: 999px; padding: 8px 14px; text-decoration: none; color: #111827; font-size: 14px; }}
-    .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }}
-    .card {{ background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }}
-    .label {{ color: #6b7280; font-size: 13px; margin-bottom: 8px; }}
-    .value {{ font-size: 22px; font-weight: bold; }}
-    table {{ width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; }}
-    th, td {{ text-align: left; padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; vertical-align: top; }}
-    th {{ background: #f3f4f6; color: #374151; }}
-    tr:last-child td {{ border-bottom: none; }}
-    a {{ color: #2563eb; word-break: break-all; }}
-    .error {{ background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 8px; margin-bottom: 16px; }}
-    .footer {{ margin-top: 24px; color: #6b7280; font-size: 13px; }}
+    :root {{
+      --bg: #f3f4f6;
+      --panel: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --high-bg: #fee2e2;
+      --high-text: #991b1b;
+      --medium-bg: #fef3c7;
+      --medium-text: #92400e;
+      --low-bg: #dcfce7;
+      --low-text: #166534;
+      --blue-bg: #dbeafe;
+      --blue-text: #1d4ed8;
+    }}
+
+    body {{
+      font-family: Arial, sans-serif;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+    }}
+
+    .container {{
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 32px;
+    }}
+
+    .hero {{
+      background: linear-gradient(135deg, #111827, #1f2937);
+      color: white;
+      border-radius: 20px;
+      padding: 28px;
+      margin-bottom: 24px;
+      box-shadow: 0 16px 40px rgba(17, 24, 39, 0.16);
+    }}
+
+    .top {{
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }}
+
+    h1 {{
+      margin: 0 0 8px 0;
+      font-size: 30px;
+      letter-spacing: -0.02em;
+    }}
+
+    .subtitle {{
+      color: #d1d5db;
+      font-size: 15px;
+      line-height: 1.6;
+    }}
+
+    .lang {{
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.24);
+      border-radius: 999px;
+      padding: 8px 14px;
+      text-decoration: none;
+      color: white;
+      font-size: 14px;
+      white-space: nowrap;
+    }}
+
+    .safe-note {{
+      margin-top: 18px;
+      display: inline-flex;
+      background: rgba(219,234,254,0.12);
+      border: 1px solid rgba(191,219,254,0.32);
+      color: #bfdbfe;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+    }}
+
+    .cards {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }}
+
+    .card {{
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }}
+
+    .card.accent {{
+      border-left: 5px solid #2563eb;
+    }}
+
+    .card.high {{
+      border-left: 5px solid #dc2626;
+    }}
+
+    .card.medium {{
+      border-left: 5px solid #f59e0b;
+    }}
+
+    .card.low {{
+      border-left: 5px solid #16a34a;
+    }}
+
+    .label {{
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 8px;
+    }}
+
+    .value {{
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }}
+
+    .section-title {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 28px 0 12px 0;
+    }}
+
+    .section-title h2 {{
+      margin: 0;
+      font-size: 20px;
+    }}
+
+    .table-wrap {{
+      overflow-x: auto;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+    }}
+
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+    }}
+
+    th, td {{
+      text-align: left;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      vertical-align: top;
+    }}
+
+    th {{
+      background: #f9fafb;
+      color: #374151;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }}
+
+    tr:last-child td {{
+      border-bottom: none;
+    }}
+
+    code {{
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 12px;
+    }}
+
+    a {{
+      color: #2563eb;
+    }}
+
+    .button-link {{
+      display: inline-block;
+      background: var(--blue-bg);
+      color: var(--blue-text);
+      text-decoration: none;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 700;
+      font-size: 12px;
+    }}
+
+    .badge {{
+      display: inline-flex;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+    }}
+
+    .badge-high {{
+      background: var(--high-bg);
+      color: var(--high-text);
+    }}
+
+    .badge-medium {{
+      background: var(--medium-bg);
+      color: var(--medium-text);
+    }}
+
+    .badge-low {{
+      background: var(--low-bg);
+      color: var(--low-text);
+    }}
+
+    .badge-neutral {{
+      background: #e5e7eb;
+      color: #374151;
+    }}
+
+    .issue-total {{
+      font-weight: 800;
+      margin-bottom: 6px;
+    }}
+
+    .severity-line {{
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }}
+
+    .sev {{
+      border-radius: 999px;
+      padding: 3px 7px;
+      font-size: 11px;
+      font-weight: 800;
+    }}
+
+    .sev.high {{
+      background: var(--high-bg);
+      color: var(--high-text);
+    }}
+
+    .sev.medium {{
+      background: var(--medium-bg);
+      color: var(--medium-text);
+    }}
+
+    .sev.low {{
+      background: var(--low-bg);
+      color: var(--low-text);
+    }}
+
+    .nowrap {{
+      white-space: nowrap;
+    }}
+
+    .error {{
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+      padding: 12px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }}
+
+    .footer {{
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }}
+
+    @media (max-width: 720px) {{
+      .container {{
+        padding: 18px;
+      }}
+
+      .top {{
+        flex-direction: column;
+      }}
+
+      h1 {{
+        font-size: 24px;
+      }}
+    }}
   </style>
 </head>
 <body>
-  <div class="top">
-    <div>
-      <h1>{t['title']}</h1>
-      <div class="subtitle">{t['subtitle']}</div>
+  <div class="container">
+    <div class="hero">
+      <div class="top">
+        <div>
+          <h1>{t['title']}</h1>
+          <div class="subtitle">{t['subtitle']}</div>
+          <div class="safe-note">{t['safe_note']}</div>
+        </div>
+        <a class="lang" href="{t['switch_url']}">{t['switch']}</a>
+      </div>
     </div>
-    <a class="lang" href="{t['switch_url']}">{t['switch']}</a>
+
+    {error_html}
+
+    <div class="cards">
+      <div class="card accent"><div class="label">{t['cloud_run']}</div><div class="value">{t['active']}</div></div>
+      <div class="card accent"><div class="label">{t['github_webhook']}</div><div class="value">{t['enabled']}</div></div>
+      <div class="card accent"><div class="label">{t['slack_commands']}</div><div class="value">3</div></div>
+      <div class="card accent"><div class="label">{t['history_records']}</div><div class="value">{len(history)}</div></div>
+      <div class="card high"><div class="label">{t['latest_high']}</div><div class="value">{escape(latest_high)}</div></div>
+      <div class="card medium"><div class="label">{t['latest_medium']}</div><div class="value">{escape(latest_medium)}</div></div>
+      <div class="card low"><div class="label">{t['latest_low']}</div><div class="value">{escape(latest_low)}</div></div>
+      <div class="card"><div class="label">{t['latest_total']}</div><div class="value">{escape(latest_total)}</div></div>
+      <div class="card"><div class="label">{t['latest_decision']}</div><div class="value">{badge(latest_decision, decision_kind(latest_decision))}</div></div>
+      <div class="card"><div class="label">{t['latest_action_level']}</div><div class="value">{escape(latest_action_level)}</div></div>
+      <div class="card"><div class="label">{t['latest_diagnose_duration']}</div><div class="value">{escape(latest_diagnose_duration or '-')}</div></div>
+      <div class="card"><div class="label">{t['latest_approval_duration']}</div><div class="value">{escape(latest_approval_duration or '-')}</div></div>
+    </div>
+
+    <div class="section-title">
+      <h2>{t['recent_history']}</h2>
+      <span class="badge badge-neutral">{t['api']}: /api/history?limit=20</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{t['created_at']}</th>
+            <th>{t['event_type']}</th>
+            <th>{t['status']}</th>
+            <th>{t['repository']}</th>
+            <th>{t['pr']}</th>
+            <th>{t['issues']}</th>
+            <th>{t['duration']}</th>
+            <th>{t['url']}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows_html}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer">Security Review Workflow / Cloud Run / GitHub / Slack / L2 Approval Mode</div>
   </div>
-
-  {error_html}
-
-  <div class="cards">
-    <div class="card"><div class="label">{t['cloud_run']}</div><div class="value">{t['active']}</div></div>
-    <div class="card"><div class="label">{t['github_webhook']}</div><div class="value">{t['enabled']}</div></div>
-    <div class="card"><div class="label">{t['slack_commands']}</div><div class="value">3</div></div>
-    <div class="card"><div class="label">{t['history_records']}</div><div class="value">{len(history)}</div></div>
-    <div class="card"><div class="label">{t['latest_total']}</div><div class="value">{escape(latest_total)}</div></div>
-    <div class="card"><div class="label">{t['latest_high']}</div><div class="value">{escape(latest_high)}</div></div>
-    <div class="card"><div class="label">{t['latest_medium']}</div><div class="value">{escape(latest_medium)}</div></div>
-    <div class="card"><div class="label">{t['latest_low']}</div><div class="value">{escape(latest_low)}</div></div>
-    <div class="card"><div class="label">{t['latest_decision']}</div><div class="value">{escape(latest_decision)}</div></div>
-    <div class="card"><div class="label">{t['latest_action_level']}</div><div class="value">{escape(latest_action_level)}</div></div>
-    <div class="card"><div class="label">{t['latest_diagnose_duration']}</div><div class="value">{escape(latest_diagnose_duration or '-')}</div></div>
-    <div class="card"><div class="label">{t['latest_approval_duration']}</div><div class="value">{escape(latest_approval_duration or '-')}</div></div>
-  </div>
-
-  <h2>{t['recent_history']}</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>{t['created_at']}</th>
-        <th>{t['event_type']}</th>
-        <th>{t['status']}</th>
-        <th>{t['repository']}</th>
-        <th>{t['pr']}</th>
-        <th>{t['total_issues']}</th>
-        <th>{t['duration']}</th>
-        <th>{t['url']}</th>
-      </tr>
-    </thead>
-    <tbody>
-      {rows_html}
-    </tbody>
-  </table>
-
-  <div class="footer">{t['api']}: /api/history?limit=20</div>
 </body>
 </html>
 """
 
     return HTMLResponse(html)
+
 
 @app.get("/api/history")
 async def api_history(limit: int = 20):
@@ -676,7 +1012,7 @@ async def slack_status(request: Request):
             "Cloud Run: Active\n"
             "GitHub: Connected\n"
             "Slack: Connected\n"
-            "Gemini: Available\n"
+            "Review engine: Available\n"
             "Scan API: Ready"
         )
     })
@@ -921,7 +1257,7 @@ def _normalize_assessment_text(value):
     text = str(value or "").strip()
 
     cleanup = {
-        "Gemini": "the review workflow",
+        "Review engine": "the review workflow",
         "AI": "automated review",
         "summary:": "### Summary\n",
         "risk:": "### Risk\n",
