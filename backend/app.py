@@ -1018,15 +1018,27 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
     text = form.get("text", [""])[0].strip()
 
     if command == "/agent-status":
-        return JSONResponse({
-            "response_type": "ephemeral",
-            "text": (
+        status_lang = text.strip().lower()
+        if status_lang in ["ja", "jp", "japanese", "日本語"]:
+            status_text = (
+                "Security Review Workflow は稼働中です。\n"
+                "Cloud Run: 稼働中\n"
+                "GitHub Webhook: 設定済み\n"
+                "Slack通知: 設定済み\n"
+                "レビュー対象: Kubernetes manifest の差分"
+            )
+        else:
+            status_text = (
                 "Security Review Workflow is running.\n"
                 "Cloud Run: active\n"
                 "GitHub Webhook: configured\n"
                 "Slack Notifications: configured\n"
                 "Review target: Kubernetes manifest diffs"
-            ),
+            )
+
+        return JSONResponse({
+            "response_type": "ephemeral",
+            "text": status_text,
         })
 
     if command == "/agent-diagnose":
