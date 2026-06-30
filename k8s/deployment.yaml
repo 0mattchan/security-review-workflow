@@ -7,11 +7,16 @@ spec:
     spec:
       containers:
         - name: app
-          image: nginx:latest
+          image: nginx:stable
           securityContext:
-            privileged: true
-          resources: {}
-
+            privileged: false
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
 # webhook live test 2026-06-29T12:20:42+00:00
 
 # webhook synchronize test 2026-06-29T12:21:58+00:00
