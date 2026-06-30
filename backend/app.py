@@ -167,7 +167,44 @@ async def github_webhook(request: Request):
         repo = repo_info["name"]
         pr_number = pr["number"]
 
-        diff_text = get_pr_diff(owner, repo, pr_number)
+        def run_with_retry(operation_name, func, *args, attempts: int = 3, delay_seconds: int = 5):
+            import time
+
+            last_error = None
+
+            for attempt in range(1, attempts + 1):
+                try:
+                    return func(*args)
+                except Exception as retry_error:
+                    last_error = retry_error
+
+                    try:
+                        from backend.audit_log import log_audit_event
+                        log_audit_event(f"diagnose_{operation_name}_retry", {
+                            "owner": owner,
+                            "repo": repo,
+                            "pr_number": pr_number,
+                            "attempt": attempt,
+                            "attempts": attempts,
+                            "error": str(retry_error),
+                        }, status="warning")
+                    except Exception as audit_error:
+                        print(f"Diagnose retry audit log failed: {audit_error}", flush=True)
+
+                    if attempt < attempts:
+                        time.sleep(delay_seconds)
+
+            raise last_error
+
+        diff_text = run_with_retry(
+            "get_diff",
+            get_pr_diff,
+            owner,
+            repo,
+            pr_number,
+            attempts=3,
+            delay_seconds=5,
+        )
         parsed = parse_diff(diff_text)
         findings = detect_risks(parsed)
 
@@ -1441,7 +1478,16 @@ def run_slack_diagnose(owner: str, repo: str, pr_number: int, response_url: str)
 
         markdown = build_markdown_report_with_timeout()
 
-        comment = post_pr_comment(owner, repo, pr_number, markdown)
+        comment = run_with_retry(
+            "post_comment",
+            post_pr_comment,
+            owner,
+            repo,
+            pr_number,
+            markdown,
+            attempts=3,
+            delay_seconds=5,
+        )
 
         high = len([f for f in findings if f.get("severity") == "HIGH"])
         medium = len([f for f in findings if f.get("severity") == "MEDIUM"])
