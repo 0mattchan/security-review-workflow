@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-app
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: nginx:stable
+          securityContext:
+            privileged: false
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+# webhook live test 2026-06-29T12:20:42+00:00
+
+# webhook synchronize test 2026-06-29T12:21:58+00:00
+
+# upsert webhook test 2026-06-29T12:32:20+00:00
+
+# signed webhook test 2026-06-29T12:44:02+00:00
+
+# real signed webhook test 2026-06-29T13:03:39+00:00
+
+# final signed webhook test 2026-06-29T13:04:26+00:00
+
+# slack webhook notification test 2026-06-29T13:27:26+00:00
+
+# slack webhook notification test 2026-06-29T13:32:03+00:00
+
+# gemini cloud run test 2026-06-29T13:46:08+00:00
+
+# slack block kit test 2026-06-29T13:51:34+00:00
+
+# business production wording test 2026-06-29T14:10:20+00:00
