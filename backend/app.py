@@ -940,25 +940,61 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
             })
 
     if command == "/agent-approve":
+        usage = (
+            "Usage:\n"
+            "/agent-approve owner/repo#pr_number\n"
+            "Example:\n"
+            "/agent-approve 0mattchan/devsecops-agent#2"
+        )
+
         if not text:
             return JSONResponse({
                 "response_type": "ephemeral",
+                "text": usage,
+            })
+
+        try:
+            import re
+
+            match = re.search(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)", text)
+
+            if not match:
+                return JSONResponse({
+                    "response_type": "ephemeral",
+                    "text": usage,
+                })
+
+            owner = match.group(1)
+            repo = match.group(2)
+            pr_number = int(match.group(3))
+            response_url = form.get("response_url", [""])[0]
+
+            print(f"Slash approve accepted: {owner}/{repo}#{pr_number}")
+
+            background_tasks.add_task(
+                run_slack_approve,
+                owner,
+                repo,
+                pr_number,
+                response_url,
+            )
+
+            return JSONResponse({
+                "response_type": "ephemeral",
                 "text": (
-                    "Usage:\n"
-                    "/agent-approve owner/repo#pr_number\n"
-                    "Example:\n"
-                    "/agent-approve 0mattchan/devsecops-agent#3"
+                    "Remediation workflow started.\n"
+                    f"Repository: {owner}/{repo}\n"
+                    f"Pull Request: #{pr_number}\n"
+                    "A remediation pull request will be created if supported fixes are available."
                 ),
             })
 
-        return JSONResponse({
-            "response_type": "ephemeral",
-            "text": (
-                "Approval received.\n"
-                "This workflow currently records approval intent only.\n"
-                "Automated remediation or merge execution is not enabled in this environment."
-            ),
-        })
+        except Exception as e:
+            print(f"Slash approve request failed: {e}")
+            return JSONResponse({
+                "response_type": "ephemeral",
+                "text": "Remediation workflow request failed. Please check Cloud Run logs.",
+            })
 
     return JSONResponse({
         "response_type": "ephemeral",
@@ -1025,3 +1061,64 @@ def run_slack_diagnose(owner: str, repo: str, pr_number: int, response_url: str)
         except Exception as post_error:
             print(f"Failed to post Slack delayed response: {post_error}")
 
+
+
+# --- Slack approve remediation worker ---
+
+def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str = ""):
+    import requests
+
+    print(f"Slash approve started: {owner}/{repo}#{pr_number}")
+
+    try:
+        from backend.github_pr import create_k8s_remediation_pr
+        from backend.slack_notify import send_slack_message
+
+        result = create_k8s_remediation_pr(owner, repo, pr_number)
+
+        if result.get("status") == "no_changes":
+            message = (
+                "Remediation review completed.\n"
+                f"Repository: {owner}/{repo}\n"
+                f"Pull Request: #{pr_number}\n"
+                "No supported Kubernetes remediation changes were found."
+            )
+        else:
+            pr_data = result.get("pull_request") or {}
+            pr_url = pr_data.get("html_url", "")
+            changed_files = result.get("changed_files", [])
+            applied_changes = result.get("applied_changes", [])
+
+            message = (
+                "Remediation pull request created.\n"
+                f"Repository: {owner}/{repo}\n"
+                f"Source Pull Request: #{pr_number}\n"
+                f"Branch: {result.get('branch')}\n"
+                f"Files changed: {len(changed_files)}\n"
+                f"Changes: {', '.join(applied_changes) if applied_changes else 'N/A'}\n"
+                f"Pull Request: {pr_url}"
+            )
+
+        try:
+            send_slack_message(message)
+            print("Slash approve channel notification posted")
+        except Exception as notify_error:
+            print(f"Failed to send Slack approve channel notification: {notify_error}")
+
+        print(f"Slash approve completed: {owner}/{repo}#{pr_number}")
+
+    except Exception as e:
+        print(f"Slash approve failed: {e}")
+
+        error_message = (
+            "Remediation workflow failed.\n"
+            f"Repository: {owner}/{repo}\n"
+            f"Pull Request: #{pr_number}\n"
+            "Please check Cloud Run logs."
+        )
+
+        try:
+            from backend.slack_notify import send_slack_message
+            send_slack_message(error_message)
+        except Exception as notify_error:
+            print(f"Failed to send Slack approve error notification: {notify_error}")

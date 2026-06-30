@@ -177,3 +177,232 @@ def post_pr_comment(owner, repo, pr_number, body):
     )
     res.raise_for_status()
     return res.json()
+
+
+# --- Security remediation PR helpers ---
+
+def get_pull_request(owner, repo, pr_number):
+    url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
+
+    res = requests.get(
+        url,
+        headers=github_headers(),
+        timeout=10,
+    )
+    res.raise_for_status()
+    return res.json()
+
+
+def list_pr_files(owner, repo, pr_number):
+    files = []
+    url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files"
+
+    while url:
+        res = requests.get(
+            url,
+            headers=github_headers(),
+            params={"per_page": 100} if "per_page" not in url else None,
+            timeout=10,
+        )
+        res.raise_for_status()
+        files.extend(res.json())
+        url = res.links.get("next", {}).get("url")
+
+    return files
+
+
+def create_branch(owner, repo, branch_name, sha):
+    url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
+
+    res = requests.post(
+        url,
+        headers=github_headers(),
+        json={
+            "ref": f"refs/heads/{branch_name}",
+            "sha": sha,
+        },
+        timeout=10,
+    )
+    res.raise_for_status()
+    return res.json()
+
+
+def get_file_text(owner, repo, path, ref):
+    import base64
+    from urllib.parse import quote
+
+    encoded_path = quote(path, safe="/")
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{encoded_path}"
+
+    res = requests.get(
+        url,
+        headers=github_headers(),
+        params={"ref": ref},
+        timeout=10,
+    )
+    res.raise_for_status()
+
+    data = res.json()
+    content = base64.b64decode(data["content"]).decode("utf-8")
+
+    return {
+        "sha": data["sha"],
+        "content": content,
+    }
+
+
+def update_file_text(owner, repo, path, branch, content, sha, message):
+    import base64
+    from urllib.parse import quote
+
+    encoded_path = quote(path, safe="/")
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{encoded_path}"
+
+    encoded_content = base64.b64encode(content.encode("utf-8")).decode("utf-8")
+
+    res = requests.put(
+        url,
+        headers=github_headers(),
+        json={
+            "message": message,
+            "content": encoded_content,
+            "sha": sha,
+            "branch": branch,
+        },
+        timeout=10,
+    )
+    res.raise_for_status()
+    return res.json()
+
+
+def apply_k8s_remediation(content):
+    import re
+
+    updated = content
+    changes = []
+
+    updated, count = re.subn(
+        r'^(\s*)privileged:\s*true\s*(#.*)?$',
+        lambda m: f"{m.group(1)}privileged: false" + (f" {m.group(2)}" if m.group(2) else ""),
+        updated,
+        flags=re.MULTILINE,
+    )
+    if count:
+        changes.append("Set privileged: false")
+
+    updated, count = re.subn(
+        r'^(\s*image:\s*["\']?\S+):latest(["\']?\s*(?:#.*)?)$',
+        r'\1:stable\2',
+        updated,
+        flags=re.MULTILINE,
+    )
+    if count:
+        changes.append("Replace latest image tag with stable tag")
+
+    def replace_empty_resources(match):
+        indent = match.group(1)
+        return (
+            f"{indent}resources:\n"
+            f"{indent}  requests:\n"
+            f"{indent}    cpu: \"100m\"\n"
+            f"{indent}    memory: \"128Mi\"\n"
+            f"{indent}  limits:\n"
+            f"{indent}    cpu: \"500m\"\n"
+            f"{indent}    memory: \"512Mi\""
+        )
+
+    updated, count = re.subn(
+        r'^(\s*)resources:\s*\{\}\s*$',
+        replace_empty_resources,
+        updated,
+        flags=re.MULTILINE,
+    )
+    if count:
+        changes.append("Add CPU and memory requests/limits")
+
+    return updated, changes
+
+
+def is_k8s_manifest_path(path):
+    return path.endswith((".yaml", ".yml"))
+
+
+def create_k8s_remediation_pr(owner, repo, pr_number):
+    import time
+
+    pr = get_pull_request(owner, repo, pr_number)
+    files = list_pr_files(owner, repo, pr_number)
+
+    base_ref = pr["base"]["ref"]
+    source_sha = pr["head"]["sha"]
+
+    branch_name = f"security-remediation/pr-{pr_number}-{int(time.time())}"
+
+    create_branch(owner, repo, branch_name, source_sha)
+
+    changed_files = []
+    applied_changes = []
+
+    for item in files:
+        path = item.get("filename", "")
+        status = item.get("status", "")
+
+        if status == "removed":
+            continue
+
+        if not is_k8s_manifest_path(path):
+            continue
+
+        current = get_file_text(owner, repo, path, branch_name)
+        new_content, changes = apply_k8s_remediation(current["content"])
+
+        if not changes or new_content == current["content"]:
+            continue
+
+        update_file_text(
+            owner,
+            repo,
+            path,
+            branch_name,
+            new_content,
+            current["sha"],
+            f"fix: remediate Kubernetes security settings in {path}",
+        )
+
+        changed_files.append(path)
+        applied_changes.extend(changes)
+
+    if not changed_files:
+        return {
+            "status": "no_changes",
+            "branch": branch_name,
+            "changed_files": [],
+            "applied_changes": [],
+        }
+
+    title = f"fix: remediate security findings from PR #{pr_number}"
+    body = (
+        "This pull request applies approved remediation for Kubernetes security findings.\n\n"
+        f"Source PR: #{pr_number}\n\n"
+        "Changes applied:\n"
+        + "\n".join(f"- {change}" for change in sorted(set(applied_changes)))
+        + "\n\nFiles changed:\n"
+        + "\n".join(f"- `{path}`" for path in changed_files)
+    )
+
+    new_pr = create_pull_request(
+        owner,
+        repo,
+        branch_name,
+        base_ref,
+        title,
+        body,
+    )
+
+    return {
+        "status": "created",
+        "branch": branch_name,
+        "changed_files": changed_files,
+        "applied_changes": sorted(set(applied_changes)),
+        "pull_request": new_pr,
+    }

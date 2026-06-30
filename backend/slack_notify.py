@@ -16,17 +16,30 @@ def get_slack_signing_secret():
     return get_secret("slack-signing-secret")
 
 
+def normalize_slack_text(value):
+    if isinstance(value, str):
+        return value.replace("\\n", "\n")
+    if isinstance(value, list):
+        return [normalize_slack_text(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: normalize_slack_text(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 def send_slack_message(text: str, blocks=None):
     token = get_secret("slack-bot-token")
     channel = get_secret("slack-channel-id")
 
     payload = {
         "channel": channel,
-        "text": text,
+        "text": normalize_slack_text(text),
     }
 
     if blocks:
-        payload["blocks"] = blocks
+        payload["blocks"] = normalize_slack_text(blocks)
 
     res = requests.post(
         "https://slack.com/api/chat.postMessage",
