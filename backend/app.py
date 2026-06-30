@@ -328,6 +328,9 @@ async def dashboard(lang: str = "en"):
         "repository": "リポジトリ" if is_ja else "Repository",
         "pr": "PR",
         "total_issues": "検出件数" if is_ja else "Total Issues",
+        "duration": "処理時間" if is_ja else "Duration",
+        "latest_diagnose_duration": "最新診断時間" if is_ja else "Latest Diagnose Duration",
+        "latest_approval_duration": "最新修正時間" if is_ja else "Latest Approval Duration",
         "url": "URL",
         "active": "稼働中" if is_ja else "Active",
         "enabled": "有効" if is_ja else "Enabled",
@@ -345,6 +348,41 @@ async def dashboard(lang: str = "en"):
         history = []
         history_error = str(e)
 
+    def format_duration(value):
+        if value in (None, ""):
+            return ""
+
+        try:
+            seconds = float(value)
+        except Exception:
+            return str(value)
+
+        if seconds >= 60:
+            return f"{seconds:.1f}s ({seconds / 60:.1f}m)"
+
+        return f"{seconds:.1f}s"
+
+    latest_diagnose_duration = ""
+    latest_approval_duration = ""
+
+    for history_item in history:
+        history_payload = history_item.get("payload") or {}
+        history_duration = format_duration(history_payload.get("duration_seconds"))
+
+        if not history_duration:
+            continue
+
+        history_event_type = history_item.get("event_type")
+
+        if not latest_diagnose_duration and history_event_type == "diagnose_completed":
+            latest_diagnose_duration = history_duration
+
+        if not latest_approval_duration and history_event_type == "approval_completed":
+            latest_approval_duration = history_duration
+
+        if latest_diagnose_duration and latest_approval_duration:
+            break
+
     rows = []
 
     for item in history:
@@ -358,6 +396,7 @@ async def dashboard(lang: str = "en"):
         )
 
         url_html = f"<a href='{escape(str(url))}' target='_blank'>{escape(str(url))}</a>" if url else ""
+        duration_html = escape(format_duration(payload.get("duration_seconds")))
 
         rows.append(
             "<tr>"
@@ -366,11 +405,12 @@ async def dashboard(lang: str = "en"):
             f"<td>{escape(str(payload.get('owner', '')))}/{escape(str(payload.get('repo', '')))}</td>"
             f"<td>{escape(str(payload.get('pr_number') or payload.get('source_pr_number') or ''))}</td>"
             f"<td>{escape(str(payload.get('total_issues', '')))}</td>"
+            f"<td>{duration_html}</td>"
             f"<td>{url_html}</td>"
             "</tr>"
         )
 
-    rows_html = "\n".join(rows) if rows else f"<tr><td colspan='6'>{t['no_history']}</td></tr>"
+    rows_html = "\n".join(rows) if rows else f"<tr><td colspan='7'>{t['no_history']}</td></tr>"
     error_html = f"<div class='error'>History load error: {escape(history_error)}</div>" if history_error else ""
 
     html = f"""
@@ -385,7 +425,7 @@ async def dashboard(lang: str = "en"):
     .top {{ display: flex; justify-content: space-between; align-items: center; gap: 16px; }}
     .subtitle {{ color: #6b7280; margin-bottom: 24px; }}
     .lang {{ background: white; border: 1px solid #d1d5db; border-radius: 999px; padding: 8px 14px; text-decoration: none; color: #111827; font-size: 14px; }}
-    .cards {{ display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }}
+    .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }}
     .card {{ background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }}
     .label {{ color: #6b7280; font-size: 13px; margin-bottom: 8px; }}
     .value {{ font-size: 22px; font-weight: bold; }}
@@ -414,6 +454,8 @@ async def dashboard(lang: str = "en"):
     <div class="card"><div class="label">{t['github_webhook']}</div><div class="value">{t['enabled']}</div></div>
     <div class="card"><div class="label">{t['slack_commands']}</div><div class="value">3</div></div>
     <div class="card"><div class="label">{t['history_records']}</div><div class="value">{len(history)}</div></div>
+    <div class="card"><div class="label">{t['latest_diagnose_duration']}</div><div class="value">{escape(latest_diagnose_duration or '-')}</div></div>
+    <div class="card"><div class="label">{t['latest_approval_duration']}</div><div class="value">{escape(latest_approval_duration or '-')}</div></div>
   </div>
 
   <h2>{t['recent_history']}</h2>
@@ -425,6 +467,7 @@ async def dashboard(lang: str = "en"):
         <th>{t['repository']}</th>
         <th>{t['pr']}</th>
         <th>{t['total_issues']}</th>
+        <th>{t['duration']}</th>
         <th>{t['url']}</th>
       </tr>
     </thead>
