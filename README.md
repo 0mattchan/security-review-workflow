@@ -21,7 +21,7 @@ It reviews Kubernetes manifest changes, posts a security review report to GitHub
 | Duplicate remediation PR prevention | Completed |
 | Review and approval history storage | Completed |
 | Expanded Kubernetes detection rules | Completed |
-| Web dashboard | Planned |
+| Web dashboard | Completed |
 
 ## Architecture
 

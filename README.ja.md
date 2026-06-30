@@ -45,3 +45,15 @@ High: 1 / Medium: 3 / Low: 4
 - Architecture English: docs/architecture.en.md
 - 本番運用チェックリスト: docs/production-readiness.ja.md
 - Production Readiness Checklist: docs/production-readiness.en.md
+
+
+## 本番初期運用モード
+
+初期本番運用では `action_level: L1` を使用します。
+
+- PRコメント: 有効
+- Slack通知: 有効
+- 修正PR作成: 無効
+- 自動適用: 無効
+
+L2/L3への移行は、実運用テストと権限レビュー後に行います。

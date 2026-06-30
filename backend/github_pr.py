@@ -306,13 +306,17 @@ def update_file_text(owner, repo, path, branch, content, sha, message):
     res.raise_for_status()
     result = res.json()
 
-    safe_record_history("review_comment_created", {
-        "owner": owner,
-        "repo": repo,
-        "pr_number": pr_number,
-        "comment_url": result.get("html_url"),
-        "comment_id": result.get("id"),
-    })
+    try:
+        safe_record_history("remediation_file_updated", {
+            "owner": owner,
+            "repo": repo,
+            "path": path,
+            "branch": branch,
+            "commit_sha": (result.get("commit") or {}).get("sha"),
+            "file_url": (result.get("content") or {}).get("html_url"),
+        })
+    except Exception as history_error:
+        print(f"File update history record failed: {history_error}", flush=True)
 
     return result
 
