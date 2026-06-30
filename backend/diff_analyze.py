@@ -664,10 +664,13 @@ def _dedupe_policy_findings(findings):
     seen = set()
 
     for finding in findings or []:
+        if not isinstance(finding, dict):
+            continue
+
         key = (
-            finding.get("rule_id"),
-            finding.get("file"),
-            finding.get("issue"),
+            str(finding.get("rule_id", "")),
+            str(finding.get("file", "")),
+            str(finding.get("issue", "")),
         )
 
         if key in seen:
