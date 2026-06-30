@@ -358,3 +358,317 @@ def detect_risks(changed_files: List[Dict[str, Any]]) -> List[Dict[str, str]]:
             )
 
     return findings
+
+
+# --- Cloud Run / IAM / CI-CD policy-aware diff rules ---
+
+def _flatten_added_diff_lines(parsed_diff):
+    """Yield (file_path, added_line) pairs from several possible parsed diff shapes."""
+    seen = set()
+
+    def detect_file(obj, current_file):
+        if not isinstance(obj, dict):
+            return current_file
+
+        for key in ("file", "path", "filename", "new_path", "new_file", "to_file"):
+            value = obj.get(key)
+            if value:
+                return str(value)
+
+        return current_file
+
+    def extract_line(entry):
+        if isinstance(entry, str):
+            if entry.startswith("+++") or entry.startswith("---"):
+                return None
+
+            if entry.startswith("+"):
+                return entry[1:]
+
+            return entry
+
+        if isinstance(entry, dict):
+            line_type = str(entry.get("type") or entry.get("kind") or entry.get("change") or "").lower()
+            raw = (
+                entry.get("content")
+                or entry.get("line")
+                or entry.get("text")
+                or entry.get("value")
+                or ""
+            )
+
+            if line_type and line_type not in {"add", "added", "addition", "+"}:
+                return None
+
+            raw = str(raw)
+
+            if raw.startswith("+++") or raw.startswith("---"):
+                return None
+
+            if raw.startswith("+"):
+                return raw[1:]
+
+            return raw
+
+        return None
+
+    def walk(obj, current_file="unknown"):
+        current_file = detect_file(obj, current_file) if isinstance(obj, dict) else current_file
+
+        if isinstance(obj, dict):
+            for key in ("added_lines", "added", "additions"):
+                value = obj.get(key)
+
+                if isinstance(value, list):
+                    for entry in value:
+                        line = extract_line(entry)
+                        if line is not None:
+                            item = (current_file, line)
+                            if item not in seen:
+                                seen.add(item)
+                                yield item
+
+            for key in ("lines", "hunks", "changes"):
+                value = obj.get(key)
+
+                if isinstance(value, list):
+                    for entry in value:
+                        if isinstance(entry, dict):
+                            line_type = str(entry.get("type") or entry.get("kind") or entry.get("change") or "").lower()
+                            raw = str(
+                                entry.get("content")
+                                or entry.get("line")
+                                or entry.get("text")
+                                or entry.get("value")
+                                or ""
+                            )
+
+                            if line_type in {"add", "added", "addition", "+"} or raw.startswith("+"):
+                                line = extract_line(entry)
+                                if line is not None:
+                                    item = (current_file, line)
+                                    if item not in seen:
+                                        seen.add(item)
+                                        yield item
+                        elif isinstance(entry, str) and entry.startswith("+") and not entry.startswith("+++"):
+                            item = (current_file, entry[1:])
+                            if item not in seen:
+                                seen.add(item)
+                                yield item
+                        else:
+                            yield from walk(entry, current_file)
+
+            for value in obj.values():
+                if isinstance(value, (dict, list)):
+                    yield from walk(value, current_file)
+
+        elif isinstance(obj, list):
+            for entry in obj:
+                yield from walk(entry, current_file)
+
+    yield from walk(parsed_diff)
+
+
+def _append_finding(findings, rule_id, severity, file_path, issue, recommendation, category):
+    findings.append({
+        "rule_id": rule_id,
+        "severity": severity,
+        "file": file_path or "unknown",
+        "issue": issue,
+        "recommendation": recommendation,
+        "category": category,
+    })
+
+
+def detect_cloudrun_iam_cicd_risks(parsed_diff):
+    try:
+        from backend.policy_loader import is_rule_group_enabled
+    except Exception:
+        def is_rule_group_enabled(_group):
+            return True
+
+    findings = []
+    by_file = {}
+
+    for file_path, line in _flatten_added_diff_lines(parsed_diff):
+        by_file.setdefault(file_path or "unknown", []).append(str(line))
+
+    for file_path, lines in by_file.items():
+        lower_file = file_path.lower()
+        text = "\n".join(lines)
+        lower_text = text.lower()
+
+        is_cloud_run_related = (
+            "cloudrun" in lower_file
+            or "cloud-run" in lower_file
+            or "service.yaml" in lower_file
+            or "run deploy" in lower_text
+            or "run services" in lower_text
+            or "kind: service" in lower_text and "run.googleapis.com" in lower_text
+        )
+
+        is_cicd_related = (
+            "cloudbuild" in lower_file
+            or ".github/workflows" in lower_file
+            or "github/workflows" in lower_file
+            or "build.yaml" in lower_file
+            or "cloudbuild.yaml" in lower_file
+            or "cloudbuild.yml" in lower_file
+        )
+
+        if is_rule_group_enabled("cloud_run") and is_cloud_run_related:
+            if "--allow-unauthenticated" in lower_text:
+                _append_finding(
+                    findings,
+                    "cloudrun_allow_unauthenticated",
+                    "HIGH",
+                    file_path,
+                    "Cloud Run deployment allows unauthenticated public access.",
+                    "Require authentication unless this is an explicitly approved public endpoint.",
+                    "cloud_run",
+                )
+
+            if "--ingress all" in lower_text or "ingress: all" in lower_text or "run.googleapis.com/ingress: all" in lower_text:
+                _append_finding(
+                    findings,
+                    "cloudrun_ingress_all",
+                    "MEDIUM",
+                    file_path,
+                    "Cloud Run ingress is open to all traffic.",
+                    "Use internal or internal-and-cloud-load-balancing ingress when possible.",
+                    "cloud_run",
+                )
+
+            if "gcloud run deploy" in lower_text and "--service-account" not in lower_text:
+                _append_finding(
+                    findings,
+                    "cloudrun_service_account_missing",
+                    "MEDIUM",
+                    file_path,
+                    "Cloud Run deployment does not specify a dedicated service account.",
+                    "Deploy with a least-privilege runtime service account.",
+                    "cloud_run",
+                )
+
+            if "default-compute" in lower_text or "compute@developer.gserviceaccount.com" in lower_text:
+                _append_finding(
+                    findings,
+                    "cloudrun_default_service_account",
+                    "HIGH",
+                    file_path,
+                    "Cloud Run appears to use a default compute service account.",
+                    "Use a dedicated least-privilege service account instead of the default compute service account.",
+                    "cloud_run",
+                )
+
+            sensitive_env_tokens = [
+                "token=",
+                "password=",
+                "secret=",
+                "api_key=",
+                "apikey=",
+                "private_key=",
+                "client_secret=",
+            ]
+
+            if "--set-env-vars" in lower_text and any(token in lower_text for token in sensitive_env_tokens):
+                _append_finding(
+                    findings,
+                    "cloudrun_plaintext_sensitive_env",
+                    "HIGH",
+                    file_path,
+                    "Sensitive-looking values are being passed through Cloud Run environment variables.",
+                    "Store secrets in Secret Manager and mount them as secrets instead of plaintext env vars.",
+                    "cloud_run",
+                )
+
+        if is_rule_group_enabled("iam"):
+            if "roles/owner" in lower_text or "roles/editor" in lower_text:
+                _append_finding(
+                    findings,
+                    "iam_overprivileged_basic_role",
+                    "HIGH",
+                    file_path,
+                    "A broad basic IAM role such as roles/owner or roles/editor is being granted.",
+                    "Use narrowly scoped predefined or custom roles.",
+                    "iam",
+                )
+
+            if "allusers" in lower_text or "allauthenticatedusers" in lower_text:
+                _append_finding(
+                    findings,
+                    "iam_public_member_binding",
+                    "HIGH",
+                    file_path,
+                    "IAM binding grants access to allUsers or allAuthenticatedUsers.",
+                    "Avoid public IAM bindings unless explicitly approved and documented.",
+                    "iam",
+                )
+
+        if is_rule_group_enabled("cicd") and is_cicd_related:
+            if "cloudbuild" in lower_file and "serviceaccount:" not in lower_text and "service_account:" not in lower_text:
+                _append_finding(
+                    findings,
+                    "cicd_cloudbuild_service_account_missing",
+                    "MEDIUM",
+                    file_path,
+                    "Cloud Build configuration does not specify a dedicated build service account.",
+                    "Run builds with a dedicated least-privilege Cloud Build service account.",
+                    "cicd",
+                )
+
+            if ":latest" in lower_text:
+                _append_finding(
+                    findings,
+                    "cicd_latest_image_tag",
+                    "MEDIUM",
+                    file_path,
+                    "CI/CD configuration references an image with the latest tag.",
+                    "Use immutable image tags such as commit SHA or build ID.",
+                    "cicd",
+                )
+
+            if "docker build" in lower_text and "--build-arg" in lower_text and any(token in lower_text for token in ["token", "password", "secret", "api_key", "apikey"]):
+                _append_finding(
+                    findings,
+                    "cicd_secret_build_arg",
+                    "HIGH",
+                    file_path,
+                    "Potential secret is passed via docker build --build-arg.",
+                    "Use Secret Manager or CI secret mounting mechanisms instead of build args.",
+                    "cicd",
+                )
+
+    return findings
+
+
+def _dedupe_policy_findings(findings):
+    deduped = []
+    seen = set()
+
+    for finding in findings or []:
+        key = (
+            finding.get("rule_id"),
+            finding.get("file"),
+            finding.get("issue"),
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        deduped.append(finding)
+
+    return deduped
+
+
+try:
+    _base_detect_risks
+except NameError:
+    _base_detect_risks = detect_risks
+
+
+def detect_risks(parsed_diff):
+    base_findings = list(_base_detect_risks(parsed_diff) or [])
+    extra_findings = detect_cloudrun_iam_cicd_risks(parsed_diff)
+    return _dedupe_policy_findings(base_findings + extra_findings)

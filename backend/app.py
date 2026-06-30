@@ -336,6 +336,8 @@ async def dashboard(lang: str = "en"):
         "latest_high": "最新High" if is_ja else "Latest High",
         "latest_medium": "最新Medium" if is_ja else "Latest Medium",
         "latest_low": "最新Low" if is_ja else "Latest Low",
+        "latest_decision": "最新判断" if is_ja else "Latest Decision",
+        "latest_action_level": "アクションレベル" if is_ja else "Action Level",
         "url": "URL",
         "active": "稼働中" if is_ja else "Active",
         "enabled": "有効" if is_ja else "Enabled",
@@ -373,6 +375,8 @@ async def dashboard(lang: str = "en"):
     latest_high = "-"
     latest_medium = "-"
     latest_low = "-"
+    latest_decision = "-"
+    latest_action_level = "-"
 
     for history_item in history:
         history_payload = history_item.get("payload") or {}
@@ -388,6 +392,8 @@ async def dashboard(lang: str = "en"):
             latest_high = str(history_payload.get("high", "-"))
             latest_medium = str(history_payload.get("medium", "-"))
             latest_low = str(history_payload.get("low", "-"))
+            latest_decision = str(history_payload.get("decision", "-"))
+            latest_action_level = str(history_payload.get("action_level", "-"))
 
         if not latest_diagnose_duration and history_event_type == "diagnose_completed":
             latest_diagnose_duration = history_duration
@@ -481,6 +487,8 @@ async def dashboard(lang: str = "en"):
     <div class="card"><div class="label">{t['latest_high']}</div><div class="value">{escape(latest_high)}</div></div>
     <div class="card"><div class="label">{t['latest_medium']}</div><div class="value">{escape(latest_medium)}</div></div>
     <div class="card"><div class="label">{t['latest_low']}</div><div class="value">{escape(latest_low)}</div></div>
+    <div class="card"><div class="label">{t['latest_decision']}</div><div class="value">{escape(latest_decision)}</div></div>
+    <div class="card"><div class="label">{t['latest_action_level']}</div><div class="value">{escape(latest_action_level)}</div></div>
     <div class="card"><div class="label">{t['latest_diagnose_duration']}</div><div class="value">{escape(latest_diagnose_duration or '-')}</div></div>
     <div class="card"><div class="label">{t['latest_approval_duration']}</div><div class="value">{escape(latest_approval_duration or '-')}</div></div>
   </div>
@@ -527,6 +535,26 @@ async def api_history(limit: int = 20):
             "message": str(e),
             "history": [],
         }, status_code=500)
+
+@app.get("/api/policy")
+async def api_policy():
+    try:
+        from backend.policy_loader import get_action_level, load_review_policy
+
+        policy = load_review_policy()
+
+        return JSONResponse({
+            "status": "ok",
+            "action_level": get_action_level(policy),
+            "policy": policy,
+        })
+    except Exception as e:
+        print(f"Policy API failed: {e}", flush=True)
+        return JSONResponse({
+            "status": "error",
+            "message": str(e),
+        }, status_code=500)
+
 
 @app.post("/api/diagnose")
 async def api_diagnose(request: Request):
@@ -768,6 +796,18 @@ def build_markdown_report(owner, repo, pr_number, findings):
     lines.append(f"- Pull Request: `#{pr_number}`")
     lines.append(f"- Total Issues: {len(findings)}")
     lines.append(f"- High: {high} / Medium: {medium} / Low: {low}")
+
+    try:
+        from backend.policy_loader import decide_review_action
+
+        policy_decision = decide_review_action(findings)
+        lines.append(f"- Action Level: {policy_decision.get('action_level')}")
+        lines.append(f"- Decision: {policy_decision.get('decision')}")
+        lines.append(f"- Remediation PR Allowed: {policy_decision.get('can_create_remediation_pr')}")
+        lines.append(f"- Auto Apply Allowed: {policy_decision.get('can_auto_apply')}")
+    except Exception as policy_error:
+        lines.append(f"- Policy Decision: unavailable ({policy_error})")
+
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -1856,6 +1896,10 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
 
         try:
             from backend.history_store import safe_record_history
+            from backend.policy_loader import decide_review_action
+
+            policy_decision = decide_review_action(findings)
+
             safe_record_history("diagnose_completed", {
                 "owner": owner,
                 "repo": repo,
@@ -1866,6 +1910,10 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
                 "low": low,
                 "review_url": comment.get("html_url"),
                 "duration_seconds": round(time.monotonic() - started_at, 3),
+                "decision": policy_decision.get("decision"),
+                "action_level": policy_decision.get("action_level"),
+                "can_create_remediation_pr": policy_decision.get("can_create_remediation_pr"),
+                "can_auto_apply": policy_decision.get("can_auto_apply"),
             })
         except Exception as history_error:
             print(f"Diagnose history record failed: {history_error}", flush=True)

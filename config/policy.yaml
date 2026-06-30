@@ -1,0 +1,41 @@
+version: 1
+action_level: L2
+
+levels:
+  L1:
+    description: "Review only. Post findings and notify Slack. Do not create remediation PRs."
+    allow_pr_comment: true
+    allow_slack_notification: true
+    allow_remediation_pr: false
+    allow_auto_apply: false
+
+  L2:
+    description: "Create remediation PR after user approval. This is the default safe production mode."
+    allow_pr_comment: true
+    allow_slack_notification: true
+    allow_remediation_pr: true
+    allow_auto_apply: false
+
+  L3:
+    description: "Autonomous remediation mode. Keep disabled unless explicitly approved for controlled environments."
+    allow_pr_comment: true
+    allow_slack_notification: true
+    allow_remediation_pr: true
+    allow_auto_apply: false
+
+thresholds:
+  block_on:
+    - HIGH
+  warn_on:
+    - MEDIUM
+  pass_when_no_findings: true
+
+rule_groups:
+  kubernetes:
+    enabled: true
+  cloud_run:
+    enabled: true
+  iam:
+    enabled: true
+  cicd:
+    enabled: true
