@@ -329,8 +329,13 @@ async def dashboard(lang: str = "en"):
         "pr": "PR",
         "total_issues": "検出件数" if is_ja else "Total Issues",
         "duration": "処理時間" if is_ja else "Duration",
+        "status": "状態" if is_ja else "Status",
         "latest_diagnose_duration": "最新診断時間" if is_ja else "Latest Diagnose Duration",
         "latest_approval_duration": "最新修正時間" if is_ja else "Latest Approval Duration",
+        "latest_total": "最新検出件数" if is_ja else "Latest Issues",
+        "latest_high": "最新High" if is_ja else "Latest High",
+        "latest_medium": "最新Medium" if is_ja else "Latest Medium",
+        "latest_low": "最新Low" if is_ja else "Latest Low",
         "url": "URL",
         "active": "稼働中" if is_ja else "Active",
         "enabled": "有効" if is_ja else "Enabled",
@@ -364,6 +369,10 @@ async def dashboard(lang: str = "en"):
 
     latest_diagnose_duration = ""
     latest_approval_duration = ""
+    latest_total = "-"
+    latest_high = "-"
+    latest_medium = "-"
+    latest_low = "-"
 
     for history_item in history:
         history_payload = history_item.get("payload") or {}
@@ -373,6 +382,12 @@ async def dashboard(lang: str = "en"):
             continue
 
         history_event_type = history_item.get("event_type")
+
+        if history_event_type == "diagnose_completed" and latest_total == "-":
+            latest_total = str(history_payload.get("total_issues", "-"))
+            latest_high = str(history_payload.get("high", "-"))
+            latest_medium = str(history_payload.get("medium", "-"))
+            latest_low = str(history_payload.get("low", "-"))
 
         if not latest_diagnose_duration and history_event_type == "diagnose_completed":
             latest_diagnose_duration = history_duration
@@ -398,10 +413,18 @@ async def dashboard(lang: str = "en"):
         url_html = f"<a href='{escape(str(url))}' target='_blank'>{escape(str(url))}</a>" if url else ""
         duration_html = escape(format_duration(payload.get("duration_seconds")))
 
+        raw_status = (
+            payload.get("status")
+            or payload.get("existing_pr_state")
+            or ("completed" if str(item.get("event_type", "")).endswith("_completed") else "")
+        )
+        status_html = escape(str(raw_status))
+
         rows.append(
             "<tr>"
             f"<td>{escape(str(item.get('created_at', '')))}</td>"
             f"<td>{escape(str(item.get('event_type', '')))}</td>"
+            f"<td>{status_html}</td>"
             f"<td>{escape(str(payload.get('owner', '')))}/{escape(str(payload.get('repo', '')))}</td>"
             f"<td>{escape(str(payload.get('pr_number') or payload.get('source_pr_number') or ''))}</td>"
             f"<td>{escape(str(payload.get('total_issues', '')))}</td>"
@@ -410,7 +433,7 @@ async def dashboard(lang: str = "en"):
             "</tr>"
         )
 
-    rows_html = "\n".join(rows) if rows else f"<tr><td colspan='7'>{t['no_history']}</td></tr>"
+    rows_html = "\n".join(rows) if rows else f"<tr><td colspan='8'>{t['no_history']}</td></tr>"
     error_html = f"<div class='error'>History load error: {escape(history_error)}</div>" if history_error else ""
 
     html = f"""
@@ -454,6 +477,10 @@ async def dashboard(lang: str = "en"):
     <div class="card"><div class="label">{t['github_webhook']}</div><div class="value">{t['enabled']}</div></div>
     <div class="card"><div class="label">{t['slack_commands']}</div><div class="value">3</div></div>
     <div class="card"><div class="label">{t['history_records']}</div><div class="value">{len(history)}</div></div>
+    <div class="card"><div class="label">{t['latest_total']}</div><div class="value">{escape(latest_total)}</div></div>
+    <div class="card"><div class="label">{t['latest_high']}</div><div class="value">{escape(latest_high)}</div></div>
+    <div class="card"><div class="label">{t['latest_medium']}</div><div class="value">{escape(latest_medium)}</div></div>
+    <div class="card"><div class="label">{t['latest_low']}</div><div class="value">{escape(latest_low)}</div></div>
     <div class="card"><div class="label">{t['latest_diagnose_duration']}</div><div class="value">{escape(latest_diagnose_duration or '-')}</div></div>
     <div class="card"><div class="label">{t['latest_approval_duration']}</div><div class="value">{escape(latest_approval_duration or '-')}</div></div>
   </div>
@@ -464,6 +491,7 @@ async def dashboard(lang: str = "en"):
       <tr>
         <th>{t['created_at']}</th>
         <th>{t['event_type']}</th>
+        <th>{t['status']}</th>
         <th>{t['repository']}</th>
         <th>{t['pr']}</th>
         <th>{t['total_issues']}</th>
