@@ -497,14 +497,26 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
         lower_file = file_path.lower()
         text = "\n".join(lines)
         lower_text = text.lower()
+        normalized_text = " ".join(lower_text.split())
+        tokens = {
+            part.strip().strip("'\"[],")
+            for part in normalized_text.replace(":", " ").split()
+        }
+        tokens.discard("")
+
+        is_gcloud_run_deploy = (
+            "gcloud run deploy" in normalized_text
+            or ("gcloud" in tokens and "run" in tokens and "deploy" in tokens)
+        )
 
         is_cloud_run_related = (
             "cloudrun" in lower_file
             or "cloud-run" in lower_file
             or "service.yaml" in lower_file
-            or "run deploy" in lower_text
-            or "run services" in lower_text
-            or "kind: service" in lower_text and "run.googleapis.com" in lower_text
+            or "run deploy" in normalized_text
+            or "run services" in normalized_text
+            or is_gcloud_run_deploy
+            or "kind: service" in normalized_text and "run.googleapis.com" in normalized_text
         )
 
         is_cicd_related = (
@@ -517,7 +529,7 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
         )
 
         if is_rule_group_enabled("cloud_run") and is_cloud_run_related:
-            if "--allow-unauthenticated" in lower_text:
+            if "--allow-unauthenticated" in normalized_text:
                 _append_finding(
                     findings,
                     "cloudrun_allow_unauthenticated",
@@ -528,7 +540,12 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
                     "cloud_run",
                 )
 
-            if "--ingress all" in lower_text or "ingress: all" in lower_text or "run.googleapis.com/ingress: all" in lower_text:
+            if (
+                "--ingress all" in normalized_text
+                or ("--ingress" in tokens and "all" in tokens)
+                or "ingress: all" in lower_text
+                or "run.googleapis.com/ingress: all" in lower_text
+            ):
                 _append_finding(
                     findings,
                     "cloudrun_ingress_all",
@@ -539,7 +556,7 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
                     "cloud_run",
                 )
 
-            if "gcloud run deploy" in lower_text and "--service-account" not in lower_text:
+            if is_gcloud_run_deploy and "--service-account" not in normalized_text:
                 _append_finding(
                     findings,
                     "cloudrun_service_account_missing",
@@ -550,7 +567,7 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
                     "cloud_run",
                 )
 
-            if "default-compute" in lower_text or "compute@developer.gserviceaccount.com" in lower_text:
+            if "default-compute" in normalized_text or "compute@developer.gserviceaccount.com" in normalized_text:
                 _append_finding(
                     findings,
                     "cloudrun_default_service_account",
@@ -571,7 +588,7 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
                 "client_secret=",
             ]
 
-            if "--set-env-vars" in lower_text and any(token in lower_text for token in sensitive_env_tokens):
+            if "--set-env-vars" in normalized_text and any(token in normalized_text for token in sensitive_env_tokens):
                 _append_finding(
                     findings,
                     "cloudrun_plaintext_sensitive_env",
@@ -583,7 +600,7 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
                 )
 
         if is_rule_group_enabled("iam"):
-            if "roles/owner" in lower_text or "roles/editor" in lower_text:
+            if "roles/owner" in normalized_text or "roles/editor" in normalized_text:
                 _append_finding(
                     findings,
                     "iam_overprivileged_basic_role",
@@ -594,7 +611,7 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
                     "iam",
                 )
 
-            if "allusers" in lower_text or "allauthenticatedusers" in lower_text:
+            if "allusers" in normalized_text or "allauthenticatedusers" in normalized_text:
                 _append_finding(
                     findings,
                     "iam_public_member_binding",
@@ -617,7 +634,7 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
                     "cicd",
                 )
 
-            if ":latest" in lower_text:
+            if ":latest" in normalized_text:
                 _append_finding(
                     findings,
                     "cicd_latest_image_tag",
@@ -628,7 +645,7 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
                     "cicd",
                 )
 
-            if "docker build" in lower_text and "--build-arg" in lower_text and any(token in lower_text for token in ["token", "password", "secret", "api_key", "apikey"]):
+            if "docker build" in normalized_text and "--build-arg" in normalized_text and any(token in normalized_text for token in ["token", "password", "secret", "api_key", "apikey"]):
                 _append_finding(
                     findings,
                     "cicd_secret_build_arg",
