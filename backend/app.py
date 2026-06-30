@@ -1486,12 +1486,55 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
     print(f"Slash diagnose started: {owner}/{repo}#{pr_number}", flush=True)
 
     try:
+        from backend.audit_log import log_audit_event
+        log_audit_event("diagnose_worker_started", {
+            "owner": owner,
+            "repo": repo,
+            "pr_number": pr_number,
+        })
+    except Exception as audit_error:
+        print(f"Diagnose worker start audit log failed: {audit_error}", flush=True)
+
+    try:
         from backend.github_pr import get_pr_diff, post_pr_comment
         from backend.diff_analyze import parse_diff, detect_risks
         from backend.slack_notify import send_slack_message
 
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_get_diff_started", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+            })
+        except Exception as audit_error:
+            print(f"Diagnose get diff start audit log failed: {audit_error}", flush=True)
+
         diff_text = get_pr_diff(owner, repo, pr_number)
+
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_get_diff_completed", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "diff_chars": len(diff_text or ""),
+            })
+        except Exception as audit_error:
+            print(f"Diagnose get diff completion audit log failed: {audit_error}", flush=True)
+
         findings = detect_risks(parse_diff(diff_text))
+
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_analysis_completed", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "total_issues": len(findings),
+            })
+        except Exception as audit_error:
+            print(f"Diagnose analysis audit log failed: {audit_error}", flush=True)
 
         markdown = build_markdown_report_with_assessment(
             owner,
@@ -1501,7 +1544,28 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
             diff_text,
         )
 
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_post_comment_started", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+            })
+        except Exception as audit_error:
+            print(f"Diagnose post comment start audit log failed: {audit_error}", flush=True)
+
         comment = post_pr_comment(owner, repo, pr_number, markdown)
+
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_post_comment_completed", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "review_url": comment.get("html_url"),
+            })
+        except Exception as audit_error:
+            print(f"Diagnose post comment completion audit log failed: {audit_error}", flush=True)
 
         high = len([f for f in findings if f.get("severity") == "HIGH"])
         medium = len([f for f in findings if f.get("severity") == "MEDIUM"])
@@ -1555,6 +1619,17 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
 
     except Exception as e:
         print(f"Slash diagnose failed: {e}", flush=True)
+
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_worker_failed", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "error": str(e),
+            }, status="error")
+        except Exception as audit_error:
+            print(f"Diagnose worker failure audit log failed: {audit_error}", flush=True)
 
         error_message = (
             "Security review failed.\n"
