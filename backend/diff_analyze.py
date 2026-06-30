@@ -659,25 +659,80 @@ def detect_cloudrun_iam_cicd_risks(parsed_diff):
     return findings
 
 
+def _normalize_finding_scalar(value):
+    if value is None:
+        return ""
+
+    if isinstance(value, (set, list, tuple)):
+        normalized_items = [
+            _normalize_finding_scalar(item)
+            for item in value
+            if item is not None
+        ]
+        normalized_items = [item for item in normalized_items if item]
+
+        if not normalized_items:
+            return ""
+
+        return ", ".join(sorted(set(normalized_items)))
+
+    return str(value)
+
+
+def _normalize_finding_severity(value):
+    text = _normalize_finding_scalar(value).upper()
+
+    if "HIGH" in text:
+        return "HIGH"
+
+    if "MEDIUM" in text:
+        return "MEDIUM"
+
+    if "LOW" in text:
+        return "LOW"
+
+    if "INFO" in text:
+        return "INFO"
+
+    return text or "INFO"
+
+
+def _normalize_policy_finding(finding):
+    if not isinstance(finding, dict):
+        return None
+
+    normalized = dict(finding)
+
+    for key in ["rule_id", "file", "issue", "recommendation", "category"]:
+        if key in normalized:
+            normalized[key] = _normalize_finding_scalar(normalized.get(key))
+
+    normalized["severity"] = _normalize_finding_severity(normalized.get("severity", "INFO"))
+
+    return normalized
+
+
 def _dedupe_policy_findings(findings):
     deduped = []
     seen = set()
 
     for finding in findings or []:
-        if not isinstance(finding, dict):
+        normalized = _normalize_policy_finding(finding)
+
+        if not normalized:
             continue
 
         key = (
-            str(finding.get("rule_id", "")),
-            str(finding.get("file", "")),
-            str(finding.get("issue", "")),
+            normalized.get("rule_id", ""),
+            normalized.get("file", ""),
+            normalized.get("issue", ""),
         )
 
         if key in seen:
             continue
 
         seen.add(key)
-        deduped.append(finding)
+        deduped.append(normalized)
 
     return deduped
 
