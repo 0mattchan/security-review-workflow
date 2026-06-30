@@ -29,6 +29,15 @@ steps:
       - "push"
       - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${BUILD_ID}"
 
+  - name: "gcr.io/cloud-builders/docker"
+    entrypoint: "bash"
+    args:
+      - "-lc"
+      - |
+        echo "=== container import test ==="
+        docker run --rm "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${BUILD_ID}" \
+          python -c "import google.cloud.storage as storage; import backend.app; print('container import ok')"
+
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: "bash"
     args:
