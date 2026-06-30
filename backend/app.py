@@ -1635,7 +1635,7 @@ async def slack_action(request: Request, background_tasks: BackgroundTasks):
                 f"Repository: {owner}/{repo}\n"
                 f"Pull Request: #{pr_number}"
             ),
-        })
+        }, background=background_tasks)
 
     if action_id == "fix_pr":
         background_tasks.add_task(
@@ -1653,7 +1653,7 @@ async def slack_action(request: Request, background_tasks: BackgroundTasks):
                 f"Repository: {owner}/{repo}\n"
                 f"Pull Request: #{pr_number}"
             ),
-        })
+        }, background=background_tasks)
 
     return JSONResponse({
         "response_type": "ephemeral",
