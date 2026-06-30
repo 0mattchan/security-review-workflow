@@ -261,6 +261,25 @@ async def slack_command(request: Request):
         "text": f"DevSecOps scan received: {text}"
     })
 
+
+
+@app.get("/api/history")
+async def api_history(limit: int = 20):
+    try:
+        from backend.history_store import list_history
+
+        return JSONResponse({
+            "status": "ok",
+            "history": list_history(limit),
+        })
+    except Exception as e:
+        print(f"History API failed: {e}", flush=True)
+        return JSONResponse({
+            "status": "error",
+            "message": str(e),
+            "history": [],
+        }, status_code=500)
+
 @app.post("/api/diagnose")
 async def api_diagnose(request: Request):
     try:
@@ -955,6 +974,7 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
 
         try:
             import re
+            from backend.github_pr import find_existing_remediation_pr
 
             match = re.search(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)", text)
 
@@ -969,7 +989,41 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
             pr_number = int(match.group(3))
             response_url = form.get("response_url", [""])[0]
 
-            print(f"Slash approve accepted: {owner}/{repo}#{pr_number}")
+            print(f"Slash approve accepted: {owner}/{repo}#{pr_number}", flush=True)
+
+            existing_pr = find_existing_remediation_pr(owner, repo, pr_number)
+
+            if existing_pr:
+                pr_url = existing_pr.get("html_url", "")
+                pr_state = existing_pr.get("state", "unknown")
+                merged_at = existing_pr.get("merged_at")
+                head_ref = (existing_pr.get("head") or {}).get("ref")
+                display_state = "merged" if merged_at else pr_state
+
+                try:
+                    from backend.history_store import safe_record_history
+                    safe_record_history("approval_duplicate_prevented", {
+                        "owner": owner,
+                        "repo": repo,
+                        "source_pr_number": pr_number,
+                        "existing_pr_url": pr_url,
+                        "existing_pr_state": display_state,
+                        "existing_branch": head_ref,
+                    })
+                except Exception as history_error:
+                    print(f"Approval history record failed: {history_error}", flush=True)
+
+                return JSONResponse({
+                    "response_type": "ephemeral",
+                    "text": (
+                        "Remediation pull request already exists.\n"
+                        f"Repository: {owner}/{repo}\n"
+                        f"Source Pull Request: #{pr_number}\n"
+                        f"Status: {display_state}\n"
+                        f"Branch: {head_ref}\n"
+                        f"Pull Request: {pr_url}"
+                    ),
+                })
 
             background_tasks.add_task(
                 run_slack_approve,
@@ -979,7 +1033,7 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
                 response_url,
             )
 
-            return JSONResponse({
+            return {
                 "response_type": "ephemeral",
                 "text": (
                     "Remediation workflow started.\n"
@@ -987,10 +1041,10 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
                     f"Pull Request: #{pr_number}\n"
                     "A remediation pull request will be created if supported fixes are available."
                 ),
-            })
+            }
 
         except Exception as e:
-            print(f"Slash approve request failed: {e}")
+            print(f"Slash approve request failed: {e}", flush=True)
             return JSONResponse({
                 "response_type": "ephemeral",
                 "text": "Remediation workflow request failed. Please check Cloud Run logs.",
@@ -1076,12 +1130,29 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
 
         result = create_k8s_remediation_pr(owner, repo, pr_number)
 
-        if result.get("status") == "no_changes":
+        status = result.get("status")
+
+        if status == "no_changes":
             message = (
                 "Remediation review completed.\n"
                 f"Repository: {owner}/{repo}\n"
                 f"Pull Request: #{pr_number}\n"
                 "No supported Kubernetes remediation changes were found."
+            )
+        elif status == "existing":
+            pr_data = result.get("pull_request") or {}
+            pr_url = pr_data.get("html_url", "")
+            pr_state = pr_data.get("state", "unknown")
+            merged_at = pr_data.get("merged_at")
+            display_state = "merged" if merged_at else pr_state
+
+            message = (
+                "Remediation pull request already exists.\n"
+                f"Repository: {owner}/{repo}\n"
+                f"Source Pull Request: #{pr_number}\n"
+                f"Status: {display_state}\n"
+                f"Branch: {result.get('branch')}\n"
+                f"Pull Request: {pr_url}"
             )
         else:
             pr_data = result.get("pull_request") or {}
@@ -1098,6 +1169,22 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
                 f"Changes: {', '.join(applied_changes) if applied_changes else 'N/A'}\n"
                 f"Pull Request: {pr_url}"
             )
+
+        try:
+            from backend.history_store import safe_record_history
+            pr_data = result.get("pull_request") or {}
+            safe_record_history("approval_completed", {
+                "owner": owner,
+                "repo": repo,
+                "source_pr_number": pr_number,
+                "status": result.get("status"),
+                "branch": result.get("branch"),
+                "remediation_pr_url": pr_data.get("html_url"),
+                "changed_files": result.get("changed_files", []),
+                "applied_changes": result.get("applied_changes", []),
+            })
+        except Exception as history_error:
+            print(f"Approval history record failed: {history_error}", flush=True)
 
         try:
             send_slack_message(message)

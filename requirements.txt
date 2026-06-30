@@ -7,3 +7,4 @@ google-cloud-secret-manager
 PyJWT
 requests
 cryptography
+google-cloud-storage>=2.18.0
