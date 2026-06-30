@@ -899,7 +899,7 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
             "Usage:\n"
             "/agent-diagnose owner/repo#pr_number\n"
             "Example:\n"
-            "/agent-diagnose 0mattchan/devsecops-agent#3"
+            "/agent-diagnose 0mattchan/devsecops-agent#2"
         )
 
         if not text:
@@ -910,8 +910,6 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
 
         try:
             import re
-            from backend.github_pr import get_pr_diff, post_pr_comment
-            from backend.diff_analyze import parse_diff, detect_risks
 
             match = re.search(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)", text)
 
@@ -924,17 +922,12 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
             owner = match.group(1)
             repo = match.group(2)
             pr_number = int(match.group(3))
-
             response_url = form.get("response_url", [""])[0]
 
-            if not response_url:
-                return JSONResponse({
-                    "response_type": "ephemeral",
-                    "text": "Missing Slack response URL.",
-                })
+            print(f"Slash diagnose accepted: {owner}/{repo}#{pr_number}", flush=True)
 
             background_tasks.add_task(
-                run_slack_diagnose,
+                run_slack_diagnose_v2,
                 owner,
                 repo,
                 pr_number,
@@ -947,12 +940,12 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
                     "Security review started.\n"
                     f"Repository: {owner}/{repo}\n"
                     f"Pull Request: #{pr_number}\n"
-                    "The result will be posted here shortly."
+                    "The result will be posted shortly."
                 ),
-            })
+            }, background=background_tasks)
 
         except Exception as e:
-            print(f"Slash diagnose failed: {e}")
+            print(f"Slash diagnose request failed: {e}", flush=True)
             return JSONResponse({
                 "response_type": "ephemeral",
                 "text": "Security review request failed. Please check Cloud Run logs.",
@@ -1209,3 +1202,95 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
             send_slack_message(error_message)
         except Exception as notify_error:
             print(f"Failed to send Slack approve error notification: {notify_error}")
+
+
+# --- Slack diagnose worker v2 ---
+
+def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: str = ""):
+    import requests
+
+    print(f"Slash diagnose started: {owner}/{repo}#{pr_number}", flush=True)
+
+    try:
+        from backend.github_pr import get_pr_diff, post_pr_comment
+        from backend.diff_analyze import parse_diff, detect_risks
+        from backend.slack_notify import send_slack_message
+
+        diff_text = get_pr_diff(owner, repo, pr_number)
+        findings = detect_risks(parse_diff(diff_text))
+
+        markdown = build_markdown_report_with_assessment(
+            owner,
+            repo,
+            pr_number,
+            findings,
+            diff_text,
+        )
+
+        comment = post_pr_comment(owner, repo, pr_number, markdown)
+
+        high = len([f for f in findings if f.get("severity") == "HIGH"])
+        medium = len([f for f in findings if f.get("severity") == "MEDIUM"])
+        low = len([f for f in findings if f.get("severity") == "LOW"])
+
+        message = (
+            "Security review completed.\n"
+            f"Repository: {owner}/{repo}\n"
+            f"Pull Request: #{pr_number}\n"
+            f"Total Issues: {len(findings)}\n"
+            f"High: {high} / Medium: {medium} / Low: {low}\n"
+            f"Review: {comment.get('html_url')}"
+        )
+
+        try:
+            from backend.history_store import safe_record_history
+            safe_record_history("diagnose_completed", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "total_issues": len(findings),
+                "high": high,
+                "medium": medium,
+                "low": low,
+                "review_url": comment.get("html_url"),
+            })
+        except Exception as history_error:
+            print(f"Diagnose history record failed: {history_error}", flush=True)
+
+        if response_url and "example.com" not in response_url:
+            try:
+                requests.post(
+                    response_url,
+                    json={
+                        "response_type": "ephemeral",
+                        "text": message,
+                    },
+                    timeout=5,
+                )
+                print("Slash diagnose delayed response posted", flush=True)
+            except Exception as response_error:
+                print(f"Failed to post Slack diagnose delayed response: {response_error}", flush=True)
+
+        try:
+            send_slack_message(message)
+            print("Slash diagnose channel notification posted", flush=True)
+        except Exception as notify_error:
+            print(f"Failed to send Slack diagnose channel notification: {notify_error}", flush=True)
+
+        print(f"Slash diagnose completed: {owner}/{repo}#{pr_number}", flush=True)
+
+    except Exception as e:
+        print(f"Slash diagnose failed: {e}", flush=True)
+
+        error_message = (
+            "Security review failed.\n"
+            f"Repository: {owner}/{repo}\n"
+            f"Pull Request: #{pr_number}\n"
+            "Please check Cloud Run logs."
+        )
+
+        try:
+            from backend.slack_notify import send_slack_message
+            send_slack_message(error_message)
+        except Exception as notify_error:
+            print(f"Failed to send Slack diagnose error notification: {notify_error}", flush=True)
