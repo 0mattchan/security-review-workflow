@@ -1532,6 +1532,9 @@ def run_slack_diagnose(owner: str, repo: str, pr_number: int, response_url: str)
 
 def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str = ""):
     import requests
+    import time
+
+    started_at = time.monotonic()
 
     print(f"Slash approve started: {owner}/{repo}#{pr_number}")
 
@@ -1603,6 +1606,7 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
                 "remediation_pr_url": pr_data.get("html_url"),
                 "changed_files": result.get("changed_files", []),
                 "applied_changes": result.get("applied_changes", []),
+                "duration_seconds": round(time.monotonic() - started_at, 3),
             }
             safe_record_history("approval_completed", completion_payload)
 
@@ -1632,6 +1636,7 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
                 "repo": repo,
                 "pr_number": pr_number,
                 "error": str(e),
+                "duration_seconds": round(time.monotonic() - started_at, 3),
             }, status="error")
         except Exception as audit_error:
             print(f"Approval worker failure audit log failed: {audit_error}", flush=True)
@@ -1654,6 +1659,9 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
 
 def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: str = ""):
     import requests
+    import time
+
+    started_at = time.monotonic()
 
     print(f"Slash diagnose started: {owner}/{repo}#{pr_number}", flush=True)
 
@@ -1786,6 +1794,7 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
                 "medium": medium,
                 "low": low,
                 "review_url": comment.get("html_url"),
+                "duration_seconds": round(time.monotonic() - started_at, 3),
             })
         except Exception as history_error:
             print(f"Diagnose history record failed: {history_error}", flush=True)
@@ -1856,6 +1865,7 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
                 "medium": medium,
                 "low": low,
                 "review_url": comment.get("html_url"),
+                "duration_seconds": round(time.monotonic() - started_at, 3),
             })
         except Exception as audit_error:
             print(f"Diagnose worker completion audit log failed: {audit_error}", flush=True)
@@ -1872,6 +1882,7 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
                 "repo": repo,
                 "pr_number": pr_number,
                 "error": str(e),
+                "duration_seconds": round(time.monotonic() - started_at, 3),
             }, status="error")
         except Exception as audit_error:
             print(f"Diagnose worker failure audit log failed: {audit_error}", flush=True)

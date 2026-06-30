@@ -47,6 +47,7 @@ def log_audit_event(event_type: str, payload: dict | None = None, status: str = 
         "review_url": payload.get("review_url", ""),
         "existing_pr_url": payload.get("existing_pr_url", ""),
         "remediation_pr_url": payload.get("remediation_pr_url", ""),
+        "duration_seconds": payload.get("duration_seconds", ""),
 
         # Full original payload.
         "payload": payload,
