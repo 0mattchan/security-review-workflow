@@ -2,7 +2,6 @@ substitutions:
   _REGION: "asia-northeast1"
   _REPOSITORY: "devsecops-repo"
   _SERVICE: "devsecops-agent"
-  _IMAGE_TAG: "$SHORT_SHA"
 
 steps:
   - name: "gcr.io/cloud-builders/gcloud"
@@ -22,13 +21,13 @@ steps:
       - "-f"
       - "deployment/Dockerfile"
       - "-t"
-      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_IMAGE_TAG}"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${BUILD_ID}"
       - "."
 
   - name: "gcr.io/cloud-builders/docker"
     args:
       - "push"
-      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_IMAGE_TAG}"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${BUILD_ID}"
 
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: "bash"
@@ -36,7 +35,7 @@ steps:
       - "-lc"
       - |
         gcloud run deploy ${_SERVICE} \
-          --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_IMAGE_TAG}" \
+          --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${BUILD_ID}" \
           --region "${_REGION}" \
           --platform managed \
           --allow-unauthenticated \
@@ -45,4 +44,4 @@ steps:
           --args "backend.app:app,--host,0.0.0.0,--port,8080"
 
 images:
-  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_IMAGE_TAG}"
+  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${BUILD_ID}"
