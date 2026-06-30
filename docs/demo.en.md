@@ -42,14 +42,14 @@ Review target: Kubernetes manifest diffs
 ## Demo 2: Pull Request Security Review
 
 ```text
-/agent-diagnose 0mattchan/devsecops-agent#2
+/agent-diagnose 0mattchan/security-review-workflow#6
 ```
 
 Expected completion message:
 
 ```text
 Security review completed.
-Repository: 0mattchan/devsecops-agent
+Repository: 0mattchan/security-review-workflow
 Pull Request: #2
 Total Issues: 8
 High: 1 / Medium: 3 / Low: 4
@@ -58,17 +58,17 @@ High: 1 / Medium: 3 / Low: 4
 ## Demo 3: Remediation Approval
 
 ```text
-/agent-approve 0mattchan/devsecops-agent#2
+/agent-approve 0mattchan/security-review-workflow#6
 ```
 
 Expected response when remediation already exists:
 
 ```text
 Remediation pull request already exists.
-Repository: 0mattchan/devsecops-agent
+Repository: 0mattchan/security-review-workflow
 Source Pull Request: #2
 Status: merged
-Pull Request: https://github.com/0mattchan/devsecops-agent/pull/5
+Pull Request: https://github.com/0mattchan/security-review-workflow/pull/5
 ```
 
 ## Demo 4: Review History

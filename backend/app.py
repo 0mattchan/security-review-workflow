@@ -1576,14 +1576,14 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
                 "使い方:\n"
                 "/agent-diagnose owner/repo#pr_number ja\n"
                 "例:\n"
-                "/agent-diagnose 0mattchan/devsecops-agent#2 ja"
+                "/agent-diagnose 0mattchan/security-review-workflow#6 ja"
             )
         else:
             usage = (
                 "Usage:\n"
                 "/agent-diagnose owner/repo#pr_number en\n"
                 "Example:\n"
-                "/agent-diagnose 0mattchan/devsecops-agent#2 en"
+                "/agent-diagnose 0mattchan/security-review-workflow#6 en"
             )
 
         if not diagnose_target:
@@ -1657,14 +1657,14 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
                 "使い方:\n"
                 "/agent-approve owner/repo#pr_number ja\n"
                 "例:\n"
-                "/agent-approve 0mattchan/devsecops-agent#2 ja"
+                "/agent-approve 0mattchan/security-review-workflow#6 ja"
             )
         else:
             usage = (
                 "Usage:\n"
                 "/agent-approve owner/repo#pr_number en\n"
                 "Example:\n"
-                "/agent-approve 0mattchan/devsecops-agent#2 en"
+                "/agent-approve 0mattchan/security-review-workflow#6 en"
             )
 
         if not approve_target:
@@ -1797,7 +1797,7 @@ def run_slack_diagnose(owner: str, repo: str, pr_number: int, response_url: str)
             low_count = len([f for f in findings if f.get("severity") == "LOW"])
 
             lines = [
-                "<!-- devsecops-agent:security-review -->",
+                "<!-- security-review-workflow:security-review -->",
                 f"# Security Review for {owner}/{repo} PR #{pr_number}",
                 "",
                 "AI assessment did not finish in time, so this report was generated from deterministic security rules.",
