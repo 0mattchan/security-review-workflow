@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+from backend.audit_log import log_audit_event
 from datetime import datetime, timezone
 
 from google.cloud import storage
