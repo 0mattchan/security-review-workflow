@@ -1610,10 +1610,60 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
                 print(f"Failed to post Slack diagnose delayed response: {response_error}", flush=True)
 
         try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_notification_started", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "review_url": comment.get("html_url"),
+            })
+        except Exception as audit_error:
+            print(f"Diagnose notification start audit log failed: {audit_error}", flush=True)
+
+        try:
             send_slack_message(message)
             print("Slash diagnose channel notification posted", flush=True)
+
+            try:
+                from backend.audit_log import log_audit_event
+                log_audit_event("diagnose_notification_completed", {
+                    "owner": owner,
+                    "repo": repo,
+                    "pr_number": pr_number,
+                    "review_url": comment.get("html_url"),
+                })
+            except Exception as audit_error:
+                print(f"Diagnose notification completion audit log failed: {audit_error}", flush=True)
+
         except Exception as notify_error:
             print(f"Failed to send Slack diagnose channel notification: {notify_error}", flush=True)
+
+            try:
+                from backend.audit_log import log_audit_event
+                log_audit_event("diagnose_notification_failed", {
+                    "owner": owner,
+                    "repo": repo,
+                    "pr_number": pr_number,
+                    "review_url": comment.get("html_url"),
+                    "error": str(notify_error),
+                }, status="error")
+            except Exception as audit_error:
+                print(f"Diagnose notification failure audit log failed: {audit_error}", flush=True)
+
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_worker_completed", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "total_issues": len(findings),
+                "high": high,
+                "medium": medium,
+                "low": low,
+                "review_url": comment.get("html_url"),
+            })
+        except Exception as audit_error:
+            print(f"Diagnose worker completion audit log failed: {audit_error}", flush=True)
 
         print(f"Slash diagnose completed: {owner}/{repo}#{pr_number}", flush=True)
 
