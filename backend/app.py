@@ -3,7 +3,7 @@ import os
 from backend.slack_notify import send_slack_message, get_slack_signing_secret
 from backend.gemini_engine import analyze_with_gemini
 from backend.vuln_scan import scan_k8s_deployment
-from fastapi import Request
+from fastapi import Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse
@@ -166,7 +166,7 @@ async def github_webhook(request: Request):
         parsed = parse_diff(diff_text)
         findings = detect_risks(parsed)
 
-        markdown = build_markdown_report_with_gemini(
+        markdown = build_markdown_report_with_assessment(
             owner,
             repo,
             pr_number,
@@ -548,7 +548,7 @@ async def github_test_pr_review(request: Request):
         parsed = parse_diff(diff_text)
         findings = detect_risks(parsed)
 
-        markdown = build_markdown_report_with_gemini(
+        markdown = build_markdown_report_with_assessment(
             owner,
             repo,
             pr_number,
@@ -628,7 +628,7 @@ def _normalize_assessment_text(value):
     return text
 
 
-def build_markdown_report_with_gemini(owner, repo, pr_number, findings, diff_text):
+def build_markdown_report_with_assessment(owner, repo, pr_number, findings, diff_text):
     base_markdown = build_markdown_report(owner, repo, pr_number, findings)
 
     if not findings:
@@ -807,3 +807,221 @@ def build_slack_review_blocks(owner, repo, pr_number, findings, comment_url=None
             "elements": buttons
         }
     ]
+
+
+# --- Slack slash command unified endpoint ---
+
+@app.post("/slack/commands")
+async def slack_commands(request: Request, background_tasks: BackgroundTasks):
+    import time
+    import hmac
+    import hashlib
+    from urllib.parse import parse_qs
+    from fastapi.responses import JSONResponse
+    from backend.slack_notify import get_slack_signing_secret
+
+    body = await request.body()
+    timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
+    signature = request.headers.get("X-Slack-Signature", "")
+
+    if not timestamp or not signature:
+        return JSONResponse(
+            {"response_type": "ephemeral", "text": "Missing Slack signature headers"},
+            status_code=401,
+        )
+
+    try:
+        timestamp_int = int(timestamp)
+    except ValueError:
+        return JSONResponse(
+            {"response_type": "ephemeral", "text": "Invalid Slack timestamp"},
+            status_code=401,
+        )
+
+    if abs(time.time() - timestamp_int) > 60 * 5:
+        return JSONResponse(
+            {"response_type": "ephemeral", "text": "Slack request timestamp is too old"},
+            status_code=401,
+        )
+
+    signing_secret = get_slack_signing_secret().strip()
+    base_string = f"v0:{timestamp}:{body.decode('utf-8')}".encode("utf-8")
+
+    expected = "v0=" + hmac.new(
+        signing_secret.encode("utf-8"),
+        base_string,
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, signature):
+        return JSONResponse(
+            {"response_type": "ephemeral", "text": "Invalid Slack signature"},
+            status_code=401,
+        )
+
+    form = parse_qs(body.decode("utf-8"))
+    command = form.get("command", [""])[0]
+    text = form.get("text", [""])[0].strip()
+
+    if command == "/agent-status":
+        return JSONResponse({
+            "response_type": "ephemeral",
+            "text": (
+                "Security Review Workflow is running.\n"
+                "Cloud Run: active\n"
+                "GitHub Webhook: configured\n"
+                "Slack Notifications: configured\n"
+                "Review target: Kubernetes manifest diffs"
+            ),
+        })
+
+    if command == "/agent-diagnose":
+        usage = (
+            "Usage:\n"
+            "/agent-diagnose owner/repo#pr_number\n"
+            "Example:\n"
+            "/agent-diagnose 0mattchan/devsecops-agent#3"
+        )
+
+        if not text:
+            return JSONResponse({
+                "response_type": "ephemeral",
+                "text": usage,
+            })
+
+        try:
+            import re
+            from backend.github_pr import get_pr_diff, post_pr_comment
+            from backend.diff_analyze import parse_diff, detect_risks
+
+            match = re.search(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)", text)
+
+            if not match:
+                return JSONResponse({
+                    "response_type": "ephemeral",
+                    "text": usage,
+                })
+
+            owner = match.group(1)
+            repo = match.group(2)
+            pr_number = int(match.group(3))
+
+            response_url = form.get("response_url", [""])[0]
+
+            if not response_url:
+                return JSONResponse({
+                    "response_type": "ephemeral",
+                    "text": "Missing Slack response URL.",
+                })
+
+            background_tasks.add_task(
+                run_slack_diagnose,
+                owner,
+                repo,
+                pr_number,
+                response_url,
+            )
+
+            return JSONResponse({
+                "response_type": "ephemeral",
+                "text": (
+                    "Security review started.\n"
+                    f"Repository: {owner}/{repo}\n"
+                    f"Pull Request: #{pr_number}\n"
+                    "The result will be posted here shortly."
+                ),
+            })
+
+        except Exception as e:
+            print(f"Slash diagnose failed: {e}")
+            return JSONResponse({
+                "response_type": "ephemeral",
+                "text": "Security review request failed. Please check Cloud Run logs.",
+            })
+
+    if command == "/agent-approve":
+        if not text:
+            return JSONResponse({
+                "response_type": "ephemeral",
+                "text": (
+                    "Usage:\n"
+                    "/agent-approve owner/repo#pr_number\n"
+                    "Example:\n"
+                    "/agent-approve 0mattchan/devsecops-agent#3"
+                ),
+            })
+
+        return JSONResponse({
+            "response_type": "ephemeral",
+            "text": (
+                "Approval received.\n"
+                "This workflow currently records approval intent only.\n"
+                "Automated remediation or merge execution is not enabled in this environment."
+            ),
+        })
+
+    return JSONResponse({
+        "response_type": "ephemeral",
+        "text": f"Unsupported command: {command}",
+    })
+
+
+# --- Slack delayed response worker for slash command diagnosis ---
+
+def run_slack_diagnose(owner: str, repo: str, pr_number: int, response_url: str):
+    import requests
+
+    try:
+        from backend.github_pr import get_pr_diff, post_pr_comment
+        from backend.diff_analyze import parse_diff, detect_risks
+
+        diff_text = get_pr_diff(owner, repo, pr_number)
+        findings = detect_risks(parse_diff(diff_text))
+
+        markdown = build_markdown_report_with_assessment(
+            owner,
+            repo,
+            pr_number,
+            findings,
+            diff_text,
+        )
+
+        comment = post_pr_comment(owner, repo, pr_number, markdown)
+
+        high = len([f for f in findings if f.get("severity") == "HIGH"])
+        medium = len([f for f in findings if f.get("severity") == "MEDIUM"])
+        low = len([f for f in findings if f.get("severity") == "LOW"])
+
+        message = (
+            "Security review completed.\n"
+            f"Repository: {owner}/{repo}\n"
+            f"Pull Request: #{pr_number}\n"
+            f"Total Issues: {len(findings)}\n"
+            f"High: {high} / Medium: {medium} / Low: {low}\n"
+            f"Review: {comment.get('html_url')}"
+        )
+
+        requests.post(
+            response_url,
+            json={
+                "response_type": "ephemeral",
+                "text": message,
+            },
+            timeout=10,
+        )
+
+    except Exception as e:
+        print(f"Slash diagnose background task failed: {e}")
+
+        try:
+            requests.post(
+                response_url,
+                json={
+                    "response_type": "ephemeral",
+                    "text": "Security review failed. Please check Cloud Run logs.",
+                },
+                timeout=10,
+            )
+        except Exception as post_error:
+            print(f"Failed to post Slack delayed response: {post_error}")
+

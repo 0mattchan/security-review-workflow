@@ -5,6 +5,10 @@ __pycache__/
 *.bak*
 _local_backups/
 secrets/
+archive/
+*.pem
+*.key
 .env
 node_modules/
+frontend/web/node_modules/
 frontend/web/dist/

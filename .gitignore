@@ -1,4 +1,5 @@
 secrets/
+archive/
 *.pem
 *.key
 .env
@@ -7,6 +8,7 @@ __pycache__/
 *.pyc
 .venv/
 node_modules/
+frontend/web/node_modules/
 frontend/web/dist/
 _local_backups/
 *.bak*

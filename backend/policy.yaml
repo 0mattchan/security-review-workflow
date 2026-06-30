@@ -53,7 +53,7 @@ policy:
 
     # Security Review Report
 
-    ## 🧪 Summary
+    ## Summary
     - Total Issues: {{issue_count}}
     - High: {{high_count}} / Medium: {{medium_count}} / Low: {{low_count}}
 
