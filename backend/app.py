@@ -1364,6 +1364,16 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
     print(f"Slash approve started: {owner}/{repo}#{pr_number}")
 
     try:
+        from backend.audit_log import log_audit_event
+        log_audit_event("approval_worker_started", {
+            "owner": owner,
+            "repo": repo,
+            "pr_number": pr_number,
+        })
+    except Exception as audit_error:
+        print(f"Approval worker start audit log failed: {audit_error}", flush=True)
+
+    try:
         from backend.github_pr import create_k8s_remediation_pr
         from backend.slack_notify import send_slack_message
 
@@ -1412,7 +1422,7 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
         try:
             from backend.history_store import safe_record_history
             pr_data = result.get("pull_request") or {}
-            safe_record_history("approval_completed", {
+            completion_payload = {
                 "owner": owner,
                 "repo": repo,
                 "source_pr_number": pr_number,
@@ -1421,7 +1431,14 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
                 "remediation_pr_url": pr_data.get("html_url"),
                 "changed_files": result.get("changed_files", []),
                 "applied_changes": result.get("applied_changes", []),
-            })
+            }
+            safe_record_history("approval_completed", completion_payload)
+
+            try:
+                from backend.audit_log import log_audit_event
+                log_audit_event("approval_worker_completed", completion_payload)
+            except Exception as audit_error:
+                print(f"Approval worker completion audit log failed: {audit_error}", flush=True)
         except Exception as history_error:
             print(f"Approval history record failed: {history_error}", flush=True)
 
@@ -1435,6 +1452,17 @@ def run_slack_approve(owner: str, repo: str, pr_number: int, response_url: str =
 
     except Exception as e:
         print(f"Slash approve failed: {e}")
+
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("approval_worker_failed", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "error": str(e),
+            }, status="error")
+        except Exception as audit_error:
+            print(f"Approval worker failure audit log failed: {audit_error}", flush=True)
 
         error_message = (
             "Remediation workflow failed.\n"
@@ -1618,6 +1646,17 @@ async def slack_action(request: Request, background_tasks: BackgroundTasks):
         })
 
     owner, repo, pr_number = target
+
+    try:
+        from backend.audit_log import log_audit_event
+        log_audit_event("slack_action_received", {
+            "owner": owner,
+            "repo": repo,
+            "pr_number": pr_number,
+            "action_id": action_id,
+        })
+    except Exception as audit_error:
+        print(f"Slack action audit log failed: {audit_error}", flush=True)
 
     if action_id == "rerun_analysis":
         background_tasks.add_task(
