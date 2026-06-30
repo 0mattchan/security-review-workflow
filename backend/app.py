@@ -263,6 +263,175 @@ async def slack_command(request: Request):
 
 
 
+
+
+@app.get("/dashboard")
+async def dashboard():
+    from fastapi.responses import HTMLResponse
+
+    try:
+        from backend.history_store import list_history
+        history = list_history(30)
+    except Exception as e:
+        history = []
+        history_error = str(e)
+    else:
+        history_error = ""
+
+    rows = []
+
+    for item in history:
+        payload = item.get("payload") or {}
+        rows.append(
+            "<tr>"
+            f"<td>{item.get('created_at', '')}</td>"
+            f"<td>{item.get('event_type', '')}</td>"
+            f"<td>{payload.get('owner', '')}/{payload.get('repo', '')}</td>"
+            f"<td>{payload.get('pr_number') or payload.get('source_pr_number') or ''}</td>"
+            f"<td>{payload.get('total_issues', '')}</td>"
+            f"<td>{payload.get('review_url') or payload.get('existing_pr_url') or payload.get('remediation_pr_url') or ''}</td>"
+            "</tr>"
+        )
+
+    rows_html = "\n".join(rows) if rows else (
+        "<tr><td colspan='6'>No history records found.</td></tr>"
+    )
+
+    error_html = ""
+    if history_error:
+        error_html = f"<div class='error'>History load error: {history_error}</div>"
+
+    html = f"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Security Review Workflow Dashboard</title>
+  <style>
+    body {{
+      font-family: Arial, sans-serif;
+      margin: 32px;
+      color: #1f2937;
+      background: #f9fafb;
+    }}
+    h1 {{
+      margin-bottom: 8px;
+    }}
+    .subtitle {{
+      color: #6b7280;
+      margin-bottom: 24px;
+    }}
+    .cards {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }}
+    .card {{
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }}
+    .card .label {{
+      color: #6b7280;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }}
+    .card .value {{
+      font-size: 22px;
+      font-weight: bold;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+    }}
+    th, td {{
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 14px;
+      vertical-align: top;
+    }}
+    th {{
+      background: #f3f4f6;
+      color: #374151;
+    }}
+    tr:last-child td {{
+      border-bottom: none;
+    }}
+    .error {{
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }}
+    .footer {{
+      margin-top: 24px;
+      color: #6b7280;
+      font-size: 13px;
+    }}
+  </style>
+</head>
+<body>
+  <h1>Security Review Workflow Dashboard</h1>
+  <div class="subtitle">GitHub PR security review, Slack approval, remediation PR, and history overview.</div>
+
+  {error_html}
+
+  <div class="cards">
+    <div class="card">
+      <div class="label">Cloud Run</div>
+      <div class="value">Active</div>
+    </div>
+    <div class="card">
+      <div class="label">GitHub Webhook</div>
+      <div class="value">Enabled</div>
+    </div>
+    <div class="card">
+      <div class="label">Slack Commands</div>
+      <div class="value">3</div>
+    </div>
+    <div class="card">
+      <div class="label">History Records</div>
+      <div class="value">{len(history)}</div>
+    </div>
+  </div>
+
+  <h2>Recent History</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Created At</th>
+        <th>Event Type</th>
+        <th>Repository</th>
+        <th>PR</th>
+        <th>Total Issues</th>
+        <th>URL</th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows_html}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    API: /api/history?limit=20
+  </div>
+</body>
+</html>
+"""
+
+    return HTMLResponse(html)
+
+
 @app.get("/api/history")
 async def api_history(limit: int = 20):
     try:
