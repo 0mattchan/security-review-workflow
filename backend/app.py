@@ -1536,6 +1536,17 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
         except Exception as audit_error:
             print(f"Diagnose analysis audit log failed: {audit_error}", flush=True)
 
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_report_build_started", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "total_issues": len(findings),
+            })
+        except Exception as audit_error:
+            print(f"Diagnose report build start audit log failed: {audit_error}", flush=True)
+
         markdown = build_markdown_report_with_assessment(
             owner,
             repo,
@@ -1543,6 +1554,18 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
             findings,
             diff_text,
         )
+
+        try:
+            from backend.audit_log import log_audit_event
+            log_audit_event("diagnose_report_build_completed", {
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "total_issues": len(findings),
+                "markdown_chars": len(markdown or ""),
+            })
+        except Exception as audit_error:
+            print(f"Diagnose report build completion audit log failed: {audit_error}", flush=True)
 
         try:
             from backend.audit_log import log_audit_event
