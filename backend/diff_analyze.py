@@ -469,14 +469,43 @@ def _flatten_added_diff_lines(parsed_diff):
     yield from walk(parsed_diff)
 
 
-def _append_finding(findings, rule_id, severity, file_path, issue, recommendation, category):
+def _append_finding(findings, *args):
+    """
+    Compatibility helper.
+
+    Supports both call styles:
+    1. K8s diff rules:
+       _append_finding(findings, seen, file_path, severity, rule_id, issue, recommendation)
+
+    2. Cloud Run / IAM / CI/CD rules:
+       _append_finding(findings, rule_id, severity, file_path, issue, recommendation, category)
+    """
+
+    if len(args) != 6:
+        raise TypeError(f"_append_finding expected 6 arguments after findings, got {len(args)}")
+
+    # Old K8s rule call style: second argument is the dedupe set.
+    if isinstance(args[0], set):
+        seen, file_path, severity, rule_id, issue, recommendation = args
+        category = "kubernetes"
+
+        key = (str(file_path or "unknown"), str(rule_id or "unknown"))
+        if key in seen:
+            return
+
+        seen.add(key)
+
+    # New extended rule call style.
+    else:
+        rule_id, severity, file_path, issue, recommendation, category = args
+
     findings.append({
-        "rule_id": rule_id,
-        "severity": severity,
-        "file": file_path or "unknown",
-        "issue": issue,
-        "recommendation": recommendation,
-        "category": category,
+        "rule_id": str(rule_id or "unknown"),
+        "severity": str(severity or "INFO").strip().upper(),
+        "file": str(file_path or "unknown"),
+        "issue": str(issue or ""),
+        "recommendation": str(recommendation or ""),
+        "category": str(category or "general"),
     })
 
 
