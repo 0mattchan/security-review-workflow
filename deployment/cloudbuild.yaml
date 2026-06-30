@@ -1,33 +1,48 @@
+substitutions:
+  _REGION: "asia-northeast1"
+  _REPOSITORY: "devsecops-repo"
+  _SERVICE: "devsecops-agent"
+  _IMAGE_TAG: "$SHORT_SHA"
+
 steps:
+  - name: "gcr.io/cloud-builders/gcloud"
+    entrypoint: "bash"
+    args:
+      - "-lc"
+      - |
+        echo "=== source check ==="
+        grep -n '@app.get("/dashboard")' backend/app.py
+        grep -n '@app.post("/slack/commands")' backend/app.py
+        grep -n 'google-cloud-storage' requirements.txt
+        sed -n '1,80p' deployment/Dockerfile
+
   - name: "gcr.io/cloud-builders/docker"
     args:
       - "build"
       - "-f"
       - "deployment/Dockerfile"
       - "-t"
-      - "asia-northeast1-docker.pkg.dev/$PROJECT_ID/devsecops-repo/devsecops-agent:latest"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_IMAGE_TAG}"
       - "."
 
   - name: "gcr.io/cloud-builders/docker"
     args:
       - "push"
-      - "asia-northeast1-docker.pkg.dev/$PROJECT_ID/devsecops-repo/devsecops-agent:latest"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_IMAGE_TAG}"
 
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
-    entrypoint: "gcloud"
+    entrypoint: "bash"
     args:
-      - "run"
-      - "deploy"
-      - "devsecops-agent"
-      - "--image"
-      - "asia-northeast1-docker.pkg.dev/$PROJECT_ID/devsecops-repo/devsecops-agent:latest"
-      - "--region"
-      - "asia-northeast1"
-      - "--platform"
-      - "managed"
-      - "--allow-unauthenticated"
-      - "--service-account"
-      - "run-sa@$PROJECT_ID.iam.gserviceaccount.com"
+      - "-lc"
+      - |
+        gcloud run deploy ${_SERVICE} \
+          --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_IMAGE_TAG}" \
+          --region "${_REGION}" \
+          --platform managed \
+          --allow-unauthenticated \
+          --service-account "run-sa@$PROJECT_ID.iam.gserviceaccount.com" \
+          --command uvicorn \
+          --args "backend.app:app,--host,0.0.0.0,--port,8080"
 
 images:
-  - "asia-northeast1-docker.pkg.dev/$PROJECT_ID/devsecops-repo/devsecops-agent:latest"
+  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:${_IMAGE_TAG}"
