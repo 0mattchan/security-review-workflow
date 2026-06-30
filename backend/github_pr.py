@@ -30,23 +30,44 @@ def create_jwt():
 
 def get_installation_token():
     installation_id = get_secret("github-installation-id")
-    jwt_token = create_jwt()
 
     url = (
         "https://api.github.com/app/installations/"
         f"{installation_id}/access_tokens"
     )
 
-    headers = {
-        "Authorization": f"Bearer {jwt_token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28"
-    }
+    last_error = None
 
-    response = requests.post(url, headers=headers, timeout=10)
-    response.raise_for_status()
+    for attempt in range(1, 5):
+        try:
+            jwt_token = create_jwt()
 
-    return response.json()["token"]
+            headers = {
+                "Authorization": f"Bearer {jwt_token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            }
+
+            response = requests.post(url, headers=headers, timeout=20)
+            response.raise_for_status()
+
+            return response.json()["token"]
+
+        except Exception as e:
+            last_error = e
+
+            if attempt >= 4:
+                break
+
+            sleep_seconds = 2 * attempt
+            print(
+                "GitHub installation token request retry: "
+                f"attempt={attempt}/4 sleep_seconds={sleep_seconds} error={e}",
+                flush=True,
+            )
+            time.sleep(sleep_seconds)
+
+    raise last_error
 
 def github_headers(accept="application/vnd.github+json"):
     token = get_installation_token()
