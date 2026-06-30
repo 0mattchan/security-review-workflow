@@ -1,3 +1,7 @@
+import urllib.parse
+import time
+import hmac
+import json
 from google.cloud import secretmanager
 import os
 from backend.slack_notify import send_slack_message, get_slack_signing_secret
@@ -903,6 +907,8 @@ def build_slack_review_blocks(owner, repo, pr_number, findings, comment_url=None
             "url": comment_url
         })
 
+    action_value = f"{owner}/{repo}#{pr_number}"
+
     buttons.extend([
         {
             "type": "button",
@@ -911,6 +917,25 @@ def build_slack_review_blocks(owner, repo, pr_number, findings, comment_url=None
                 "text": "Open PR"
             },
             "url": pr_url
+        },
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": "Re-run Analysis"
+            },
+            "action_id": "rerun_analysis",
+            "value": action_value
+        },
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": "Fix PR"
+            },
+            "style": "primary",
+            "action_id": "fix_pr",
+            "value": action_value
         },
         {
             "type": "button",
@@ -1514,3 +1539,123 @@ def run_slack_diagnose_v2(owner: str, repo: str, pr_number: int, response_url: s
             send_slack_message(error_message)
         except Exception as notify_error:
             print(f"Failed to send Slack diagnose error notification: {notify_error}", flush=True)
+
+
+# --- Slack interactive button endpoint ---
+
+def verify_slack_action_signature(headers, raw_body: bytes) -> bool:
+    timestamp = headers.get("x-slack-request-timestamp")
+    slack_signature = headers.get("x-slack-signature")
+
+    if not timestamp or not slack_signature:
+        return False
+
+    try:
+        if abs(time.time() - int(timestamp)) > 60 * 5:
+            return False
+    except Exception:
+        return False
+
+    secret = get_slack_signing_secret()
+    base = f"v0:{timestamp}:{raw_body.decode('utf-8')}"
+    expected = "v0=" + hmac.new(
+        secret.encode("utf-8"),
+        base.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    return hmac.compare_digest(expected, slack_signature)
+
+
+def parse_slack_action_target(value: str):
+    match = re.search(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)", value or "")
+    if not match:
+        return None
+
+    owner, repo, pr_number = match.groups()
+    return owner, repo, int(pr_number)
+
+
+@app.post("/slack/action")
+async def slack_action(request: Request, background_tasks: BackgroundTasks):
+    raw_body = await request.body()
+
+    if not verify_slack_action_signature(request.headers, raw_body):
+        return JSONResponse(
+            {"response_type": "ephemeral", "text": "Invalid Slack signature."},
+            status_code=401,
+        )
+
+    params = urllib.parse.parse_qs(raw_body.decode("utf-8"))
+    payload_text = params.get("payload", [""])[0]
+
+    try:
+        payload = json.loads(payload_text)
+    except Exception:
+        return JSONResponse(
+            {"response_type": "ephemeral", "text": "Invalid Slack action payload."},
+            status_code=400,
+        )
+
+    actions = payload.get("actions") or []
+    if not actions:
+        return JSONResponse({
+            "response_type": "ephemeral",
+            "text": "No Slack action was provided.",
+        })
+
+    action = actions[0]
+    action_id = action.get("action_id", "")
+    value = action.get("value", "")
+    response_url = payload.get("response_url", "")
+
+    target = parse_slack_action_target(value)
+    if not target:
+        return JSONResponse({
+            "response_type": "ephemeral",
+            "text": "Invalid PR target in Slack action.",
+        })
+
+    owner, repo, pr_number = target
+
+    if action_id == "rerun_analysis":
+        background_tasks.add_task(
+            run_slack_diagnose_v2,
+            owner,
+            repo,
+            pr_number,
+            response_url,
+        )
+        return JSONResponse({
+            "response_type": "ephemeral",
+            "replace_original": False,
+            "text": (
+                "Re-run analysis started.\n"
+                f"Repository: {owner}/{repo}\n"
+                f"Pull Request: #{pr_number}"
+            ),
+        })
+
+    if action_id == "fix_pr":
+        background_tasks.add_task(
+            run_slack_approve,
+            owner,
+            repo,
+            pr_number,
+            response_url,
+        )
+        return JSONResponse({
+            "response_type": "ephemeral",
+            "replace_original": False,
+            "text": (
+                "Fix PR workflow started.\n"
+                f"Repository: {owner}/{repo}\n"
+                f"Pull Request: #{pr_number}"
+            ),
+        })
+
+    return JSONResponse({
+        "response_type": "ephemeral",
+        "replace_original": False,
+        "text": f"Unsupported Slack action: {action_id}",
+    })
