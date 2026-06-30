@@ -145,7 +145,7 @@ def _has_network_policy_addition(lines: List[str]) -> bool:
     return _has_pattern(lines, r"^\s*kind\s*:\s*NetworkPolicy\b")
 
 
-def detect_risks(changed_files: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+def _detect_base_risks(changed_files: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     findings: List[Dict[str, str]] = []
     seen = set()
 
@@ -766,13 +766,360 @@ def _dedupe_policy_findings(findings):
     return deduped
 
 
-try:
-    _base_detect_risks
-except NameError:
-    _base_detect_risks = detect_risks
+# --- Extended non-Kubernetes diff detection wrapper ---
+
+def _get_file_path(changed_file):
+    return str(
+        changed_file.get("file")
+        or changed_file.get("filename")
+        or changed_file.get("path")
+        or ""
+    )
 
 
-def detect_risks(parsed_diff):
-    base_findings = list(_base_detect_risks(parsed_diff) or [])
-    extra_findings = detect_cloudrun_iam_cicd_risks(parsed_diff)
-    return _dedupe_policy_findings(base_findings + extra_findings)
+def _get_added_lines(changed_file):
+    return [str(line) for line in (
+        changed_file.get("added_lines")
+        or changed_file.get("added")
+        or []
+    )]
+
+
+def _append_extended_finding(findings, seen, file_path, severity, rule_id, issue, recommendation, category):
+    key = (str(file_path or "unknown"), str(rule_id or "unknown"))
+
+    if key in seen:
+        return
+
+    seen.add(key)
+
+    findings.append({
+        "rule_id": str(rule_id or "unknown"),
+        "severity": str(severity or "INFO").strip().upper(),
+        "file": str(file_path or "unknown"),
+        "issue": str(issue or ""),
+        "recommendation": str(recommendation or ""),
+        "category": str(category or "general"),
+    })
+
+
+def _line_has(lines, pattern):
+    return any(re.search(pattern, str(line), re.IGNORECASE) for line in lines)
+
+
+def _joined_has(joined, pattern):
+    return re.search(pattern, joined, re.IGNORECASE | re.MULTILINE) is not None
+
+
+def _is_github_actions_file(path):
+    p = path.lower().lstrip("./")
+    p = re.sub(r"^[ab]/", "", p)
+    return (
+        p.startswith(".github/workflows/")
+        or p.startswith("github/workflows/")
+    ) and p.endswith((".yml", ".yaml"))
+
+
+def _is_cloudbuild_file(path):
+    p = path.lower().lstrip("./")
+    return p == "cloudbuild.yaml" or p == "cloudbuild.yml" or p.endswith("/cloudbuild.yaml") or p.endswith("/cloudbuild.yml")
+
+
+def _is_dockerfile(path):
+    p = path.lower().lstrip("./")
+    return p == "dockerfile" or p.endswith("/dockerfile") or p.endswith(".dockerfile")
+
+
+def _is_terraform_file(path):
+    return path.lower().endswith(".tf")
+
+
+def _looks_like_cloud_run_yaml(path, joined):
+    p = path.lower().lstrip("./")
+    return (
+        "cloudrun" in p
+        or "cloud-run" in p
+        or "run.googleapis.com" in joined
+        or "serving.knative.dev" in joined
+        or "kind: Service" in joined and "template:" in joined and "containers:" in joined
+    )
+
+
+def _detect_extended_risks(changed_files):
+    findings = []
+    seen = set()
+
+    for changed_file in changed_files or []:
+        file_path = _get_file_path(changed_file)
+        path = file_path.lower().lstrip("./")
+        added_lines = _get_added_lines(changed_file)
+        joined = "\n".join(added_lines)
+
+        if not added_lines:
+            continue
+
+        # GitHub Actions / CI/CD
+        if _is_github_actions_file(path):
+            if _line_has(added_lines, r"^\s*pull_request_target\s*:"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "ci_github_actions_pull_request_target",
+                    "pull_request_target が追加されています",
+                    "外部PRのコード実行リスクがあるため、pull_request へ変更するか権限を厳格に制限してください",
+                    "cicd",
+                )
+
+            if _line_has(added_lines, r"^\s*permissions\s*:\s*write-all\s*$"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "ci_github_actions_permissions_write_all",
+                    "GitHub Actions に write-all 権限が追加されています",
+                    "permissions は contents: read など必要最小限にしてください",
+                    "cicd",
+                )
+
+            if _line_has(added_lines, r"^\s*(contents|packages|pull-requests|issues|actions)\s*:\s*write\s*$"):
+                _append_extended_finding(
+                    findings, seen, file_path, "MEDIUM",
+                    "ci_github_actions_write_permission",
+                    "GitHub Actions に write 権限が追加されています",
+                    "ジョブ単位で必要最小限の権限にしてください",
+                    "cicd",
+                )
+
+            if _line_has(added_lines, r"^\s*-?\s*uses\s*:\s*[^@\s#]+(\s*#.*)?$"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "ci_github_actions_unpinned_action",
+                    "uses のアクションがバージョン固定されていません",
+                    "例: actions/checkout@v4 のようにタグまたはSHAで固定してください",
+                    "cicd",
+                )
+
+            if _line_has(added_lines, r"^\s*uses\s*:\s*[^@\s#]+@(main|master|latest)\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "MEDIUM",
+                    "ci_github_actions_mutable_ref",
+                    "GitHub Actions が main/master/latest など可変参照を使っています",
+                    "固定タグまたはコミットSHAを使用してください",
+                    "cicd",
+                )
+
+            if _joined_has(joined, r"(password|token|secret|api_key|apikey)\s*:\s*['\"]?[A-Za-z0-9_\-]{8,}"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "ci_github_actions_plaintext_secret",
+                    "GitHub Actions に機密情報らしき値が平文で追加されています",
+                    "GitHub Secrets または Secret Manager を参照してください",
+                    "cicd",
+                )
+
+            if _joined_has(joined, r"(curl|wget)\b.*\|\s*(sh|bash)"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "ci_github_actions_pipe_to_shell",
+                    "curl/wget の結果を直接 shell 実行しています",
+                    "取得元と内容を検証し、固定バージョンの公式アクションやチェックサム検証を使ってください",
+                    "cicd",
+                )
+
+        # Cloud Build / Cloud Run deploy config
+        if _is_cloudbuild_file(path):
+            if _joined_has(joined, r"--allow-unauthenticated\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "cloudbuild_cloudrun_allow_unauthenticated",
+                    "Cloud Build から Cloud Run を unauthenticated 公開しています",
+                    "公開が必要なWebhook以外は認証を有効化し、公開理由を明記してください",
+                    "cloud_run",
+                )
+
+            if _joined_has(joined, r"gcloud\s+run\s+deploy") and not _joined_has(joined, r"--service-account\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "MEDIUM",
+                    "cloudbuild_cloudrun_service_account_missing",
+                    "Cloud Run deploy に専用 service account が指定されていません",
+                    "--service-account で最小権限の実行SAを指定してください",
+                    "cloud_run",
+                )
+
+            if _joined_has(joined, r"gcloud\s+run\s+deploy") and not _joined_has(joined, r"--max-instances\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "LOW",
+                    "cloudbuild_cloudrun_max_instances_missing",
+                    "Cloud Run deploy に max-instances が明示されていません",
+                    "想定負荷とコストに応じて --max-instances を設定してください",
+                    "cloud_run",
+                )
+
+            if _joined_has(joined, r":latest\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "MEDIUM",
+                    "cloudbuild_image_latest_tag",
+                    "Cloud Build / deploy 設定で latest タグが使われています",
+                    "ビルドSHAやリリースタグなど固定可能なタグを使ってください",
+                    "cicd",
+                )
+
+            if _joined_has(joined, r"--set-env-vars=.*(PASSWORD|TOKEN|SECRET|API_KEY|APIKEY)="):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "cloudbuild_plaintext_sensitive_env",
+                    "Cloud Run 環境変数に機密情報らしき値を直接設定しています",
+                    "--set-secrets または Secret Manager 参照に変更してください",
+                    "cloud_run",
+                )
+
+        # Cloud Run YAML / Knative Service YAML
+        if _looks_like_cloud_run_yaml(path, joined):
+            if _joined_has(joined, r"run\.googleapis\.com/ingress\s*:\s*all") or _joined_has(joined, r"ingress\s*:\s*all"):
+                _append_extended_finding(
+                    findings, seen, file_path, "MEDIUM",
+                    "cloudrun_ingress_all",
+                    "Cloud Run ingress: all が追加されています",
+                    "必要に応じて internal または internal-and-cloud-load-balancing を検討してください",
+                    "cloud_run",
+                )
+
+            if _joined_has(joined, r"\ballUsers\b|\ballAuthenticatedUsers\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "cloudrun_public_invoker",
+                    "Cloud Run に公開アクセス権限が追加されています",
+                    "公開Webhook以外は認証を有効化し、roles/run.invoker を限定してください",
+                    "cloud_run",
+                )
+
+            if _joined_has(joined, r"image\s*:\s*[^\s#]+:latest\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "MEDIUM",
+                    "cloudrun_image_latest_tag",
+                    "Cloud Run コンテナイメージに latest タグが追加されています",
+                    "固定タグまたはdigestを使用してください",
+                    "cloud_run",
+                )
+
+            if _joined_has(joined, r"env\s*:") and _joined_has(joined, r"(PASSWORD|TOKEN|SECRET|API_KEY|APIKEY).*value\s*:"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "cloudrun_plaintext_sensitive_env",
+                    "Cloud Run 環境変数に機密情報らしき値が平文で追加されています",
+                    "Secret Manager 参照に変更してください",
+                    "cloud_run",
+                )
+
+        # Dockerfile / container image config
+        if _is_dockerfile(path):
+            if _line_has(added_lines, r"^\s*FROM\s+\S+:latest\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "MEDIUM",
+                    "dockerfile_latest_base_image",
+                    "Dockerfile のベースイメージに latest タグが使われています",
+                    "固定バージョンタグまたはdigestを使用してください",
+                    "container",
+                )
+
+            if _line_has(added_lines, r"^\s*USER\s+root\b") or not _line_has(added_lines, r"^\s*USER\s+"):
+                _append_extended_finding(
+                    findings, seen, file_path, "MEDIUM",
+                    "dockerfile_non_root_user_missing",
+                    "Dockerfile で非rootユーザーが明示されていません",
+                    "USER で非rootユーザーを指定してください",
+                    "container",
+                )
+
+            if _joined_has(joined, r"(curl|wget)\b.*\|\s*(sh|bash)"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "dockerfile_pipe_to_shell",
+                    "Dockerfile で curl/wget の結果を直接 shell 実行しています",
+                    "チェックサム検証や公式パッケージを利用してください",
+                    "container",
+                )
+
+            if _line_has(added_lines, r"^\s*ADD\s+https?://"):
+                _append_extended_finding(
+                    findings, seen, file_path, "MEDIUM",
+                    "dockerfile_add_remote_url",
+                    "Dockerfile の ADD で外部URLを直接取得しています",
+                    "curl + checksum検証、またはCOPYに変更してください",
+                    "container",
+                )
+
+            if _line_has(added_lines, r"^\s*FROM\s+") and not _line_has(added_lines, r"^\s*HEALTHCHECK\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "LOW",
+                    "dockerfile_healthcheck_missing_advisory",
+                    "Dockerfile に HEALTHCHECK が追加されていません",
+                    "必要に応じて HEALTHCHECK を追加してください",
+                    "container",
+                )
+
+        # Terraform / IAM
+        if _is_terraform_file(path):
+            if _joined_has(joined, r"\b(allUsers|allAuthenticatedUsers)\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "tf_public_iam_member",
+                    "Terraform で public IAM member が追加されています",
+                    "allUsers / allAuthenticatedUsers を避け、必要な主体だけに絞ってください",
+                    "iam",
+                )
+
+            if _joined_has(joined, r"roles/(owner|editor|.*admin)\b"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "tf_overprivileged_iam_role",
+                    "Terraform で強いIAMロールが追加されています",
+                    "最小権限の個別ロールに分割してください",
+                    "iam",
+                )
+
+            if _joined_has(joined, r"0\.0\.0\.0/0"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "tf_firewall_allow_all",
+                    "Terraform で 0.0.0.0/0 の許可が追加されています",
+                    "CIDRを必要最小限に制限してください",
+                    "iam",
+                )
+
+            if _joined_has(joined, r"google_service_account_key"):
+                _append_extended_finding(
+                    findings, seen, file_path, "HIGH",
+                    "tf_service_account_key_created",
+                    "Terraform でサービスアカウントキー作成が追加されています",
+                    "Workload Identity / Secret Manager 等を使い、長期鍵の作成を避けてください",
+                    "iam",
+                )
+
+    return findings
+
+
+def detect_risks(changed_files):
+    base_findings = _detect_base_risks(changed_files)
+    extended_findings = _detect_extended_risks(changed_files)
+
+    merged = []
+    seen = set()
+
+    for finding in list(base_findings or []) + list(extended_findings or []):
+        if not isinstance(finding, dict):
+            continue
+
+        file_path = str(finding.get("file") or "unknown")
+        rule_id = str(finding.get("rule_id") or "unknown")
+        key = (file_path, rule_id)
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        finding["severity"] = str(finding.get("severity") or "INFO").strip().upper()
+        finding["file"] = file_path
+        finding["rule_id"] = rule_id
+        merged.append(finding)
+
+    return merged
+
