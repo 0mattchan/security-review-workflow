@@ -505,25 +505,24 @@ async def dashboard(lang: str = "en"):
   <meta charset="utf-8">
   <title>{t['title']}</title>
   
+  
   <style>
     :root {{
-      --page-bg: #f6f8fa;
-      --surface: #ffffff;
-      --surface-muted: #f9fafb;
+      --bg: #f6f8fa;
+      --panel: #ffffff;
       --text: #1f2328;
       --muted: #59636e;
       --border: #d0d7de;
       --border-soft: #eaeef2;
       --blue: #0969da;
       --blue-soft: #ddf4ff;
-      --green: #1a7f37;
-      --green-soft: #dafbe1;
       --red: #cf222e;
       --red-soft: #ffebe9;
       --yellow: #9a6700;
       --yellow-soft: #fff8c5;
-      --shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
-      --radius: 10px;
+      --green: #1a7f37;
+      --green-soft: #dafbe1;
+      --radius: 12px;
     }}
 
     * {{
@@ -532,11 +531,11 @@ async def dashboard(lang: str = "en"):
 
     body {{
       margin: 0;
-      background: var(--page-bg);
+      background: var(--bg);
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
       font-size: 14px;
-      line-height: 1.55;
+      line-height: 1.5;
     }}
 
     a {{
@@ -551,58 +550,42 @@ async def dashboard(lang: str = "en"):
     .container {{
       max-width: 1280px;
       margin: 0 auto;
-      padding: 28px 24px 40px;
+      padding: 24px;
     }}
 
-    .hero {{
+    .hero,
+    .header {{
       position: relative;
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 24px;
       margin-bottom: 24px;
-      padding: 24px;
-      background: var(--surface);
+      padding: 24px 28px;
+      background: var(--panel);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      box-shadow: var(--shadow);
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
     }}
 
-    .hero h1 {{
+    .hero h1,
+    .header h1,
+    h1 {{
       margin: 0 0 8px;
       color: var(--text);
-      font-size: 28px;
-      font-weight: 700;
+      font-size: 30px;
+      font-weight: 800;
       letter-spacing: -0.02em;
     }}
 
-    .subtitle {{
+    .subtitle,
+    .description {{
       margin: 0;
       color: var(--muted);
       font-size: 14px;
     }}
 
-    .lang {{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 32px;
-      padding: 6px 12px;
-      background: var(--surface-muted);
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      color: var(--blue);
-      font-size: 13px;
-      font-weight: 600;
-      white-space: nowrap;
-    }}
-
     .safe-note {{
       display: inline-flex;
       align-items: center;
-      width: fit-content;
       margin-top: 16px;
-      padding: 8px 12px;
+      padding: 8px 13px;
       background: var(--blue-soft);
       color: #0550ae;
       border: 1px solid #54aeef;
@@ -611,33 +594,59 @@ async def dashboard(lang: str = "en"):
       font-weight: 700;
     }}
 
-    .grid {{
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-      margin-bottom: 28px;
+    .lang {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 10px;
+      padding: 6px 12px;
+      background: #ffffff;
+      color: var(--blue);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      width: fit-content;
+    }}
+
+    /* KPI cards: support all existing possible wrapper class names */
+    .grid,
+    .cards,
+    .summary,
+    .summary-grid,
+    .stats,
+    .stats-grid,
+    .metrics,
+    .metrics-grid,
+    .kpi-grid,
+    .dashboard-grid {{
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+      gap: 14px !important;
+      margin: 0 0 28px !important;
+      align-items: stretch !important;
     }}
 
     .card {{
       min-height: 96px;
-      padding: 18px;
-      background: var(--surface);
+      padding: 18px 20px;
+      background: var(--panel);
       border: 1px solid var(--border);
       border-left: 4px solid var(--border);
       border-radius: var(--radius);
-      box-shadow: var(--shadow);
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
     }}
 
     .card .label {{
       margin-bottom: 8px;
       color: var(--muted);
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 650;
     }}
 
     .card .value {{
       color: var(--text);
-      font-size: 26px;
+      font-size: 28px;
       font-weight: 800;
       line-height: 1.1;
       letter-spacing: -0.02em;
@@ -671,7 +680,7 @@ async def dashboard(lang: str = "en"):
       margin: 0;
       color: var(--text);
       font-size: 20px;
-      font-weight: 700;
+      font-weight: 800;
       letter-spacing: -0.01em;
     }}
 
@@ -691,27 +700,27 @@ async def dashboard(lang: str = "en"):
       color: #24292f;
       border-radius: 999px;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
       white-space: nowrap;
     }}
 
     .table-wrap {{
       overflow: auto;
-      background: var(--surface);
+      background: var(--panel);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      box-shadow: var(--shadow);
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
     }}
 
     table {{
       width: 100%;
       min-width: 1050px;
       border-collapse: collapse;
-      background: var(--surface);
+      background: var(--panel);
     }}
 
     thead {{
-      background: var(--surface-muted);
+      background: #f6f8fa;
     }}
 
     th {{
@@ -719,7 +728,7 @@ async def dashboard(lang: str = "en"):
       color: var(--muted);
       border-bottom: 1px solid var(--border);
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
       text-align: left;
       white-space: nowrap;
     }}
@@ -801,16 +810,9 @@ async def dashboard(lang: str = "en"):
       border: 1px solid #b6e3ff;
       border-radius: 999px;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
       text-decoration: none;
       white-space: nowrap;
-    }}
-
-    .open-link:hover,
-    .button:hover,
-    button:hover {{
-      background: #b6e3ff;
-      text-decoration: none;
     }}
 
     .footer {{
@@ -821,31 +823,45 @@ async def dashboard(lang: str = "en"):
       text-align: center;
     }}
 
-    @media (max-width: 1100px) {{
-      .grid {{
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    @media (max-width: 900px) {{
+      .grid,
+      .cards,
+      .summary,
+      .summary-grid,
+      .stats,
+      .stats-grid,
+      .metrics,
+      .metrics-grid,
+      .kpi-grid,
+      .dashboard-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       }}
     }}
 
-    @media (max-width: 700px) {{
+    @media (max-width: 640px) {{
       .container {{
         padding: 16px;
       }}
 
-      .hero {{
-        flex-direction: column;
-        padding: 18px;
+      .grid,
+      .cards,
+      .summary,
+      .summary-grid,
+      .stats,
+      .stats-grid,
+      .metrics,
+      .metrics-grid,
+      .kpi-grid,
+      .dashboard-grid {{
+        grid-template-columns: 1fr !important;
       }}
 
-      .hero h1 {{
+      h1 {{
         font-size: 24px;
-      }}
-
-      .grid {{
-        grid-template-columns: 1fr;
       }}
     }}
   </style>
+
 
 </head>
 <body>
