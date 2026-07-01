@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: approve-remediation-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: approve-remediation-demo
+  template:
+    metadata:
+      labels:
+        app: approve-remediation-demo
+    spec:
+      containers:
+        - name: app
+          image: nginx:latest
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+            runAsNonRoot: false
+            runAsUser: 0
+            readOnlyRootFilesystem: false
