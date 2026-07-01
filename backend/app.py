@@ -504,352 +504,349 @@ async def dashboard(lang: str = "en"):
 <head>
   <meta charset="utf-8">
   <title>{t['title']}</title>
+  
   <style>
     :root {{
-      --bg: #f3f4f6;
-      --panel: #ffffff;
-      --text: #111827;
-      --muted: #6b7280;
-      --border: #e5e7eb;
-      --high-bg: #fee2e2;
-      --high-text: #991b1b;
-      --medium-bg: #fef3c7;
-      --medium-text: #92400e;
-      --low-bg: #dcfce7;
-      --low-text: #166534;
-      --blue-bg: #dbeafe;
-      --blue-text: #1d4ed8;
+      --page-bg: #f6f8fa;
+      --surface: #ffffff;
+      --surface-muted: #f9fafb;
+      --text: #1f2328;
+      --muted: #59636e;
+      --border: #d0d7de;
+      --border-soft: #eaeef2;
+      --blue: #0969da;
+      --blue-soft: #ddf4ff;
+      --green: #1a7f37;
+      --green-soft: #dafbe1;
+      --red: #cf222e;
+      --red-soft: #ffebe9;
+      --yellow: #9a6700;
+      --yellow-soft: #fff8c5;
+      --shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+      --radius: 10px;
+    }}
+
+    * {{
+      box-sizing: border-box;
     }}
 
     body {{
-      font-family: Arial, sans-serif;
       margin: 0;
+      background: var(--page-bg);
       color: var(--text);
-      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+    }}
+
+    a {{
+      color: var(--blue);
+      text-decoration: none;
+    }}
+
+    a:hover {{
+      text-decoration: underline;
     }}
 
     .container {{
       max-width: 1280px;
       margin: 0 auto;
-      padding: 32px;
+      padding: 28px 24px 40px;
     }}
 
     .hero {{
-      background: linear-gradient(135deg, #111827, #1f2937);
-      color: white;
-      border-radius: 20px;
-      padding: 28px;
-      margin-bottom: 24px;
-      box-shadow: 0 16px 40px rgba(17, 24, 39, 0.16);
-    }}
-
-    .top {{
+      position: relative;
       display: flex;
-      justify-content: space-between;
       align-items: flex-start;
-      gap: 16px;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
     }}
 
-    h1 {{
-      margin: 0 0 8px 0;
-      font-size: 30px;
+    .hero h1 {{
+      margin: 0 0 8px;
+      color: var(--text);
+      font-size: 28px;
+      font-weight: 700;
       letter-spacing: -0.02em;
     }}
 
     .subtitle {{
-      color: #d1d5db;
-      font-size: 15px;
-      line-height: 1.6;
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
     }}
 
     .lang {{
-      background: rgba(255,255,255,0.12);
-      border: 1px solid rgba(255,255,255,0.24);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+      padding: 6px 12px;
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
       border-radius: 999px;
-      padding: 8px 14px;
-      text-decoration: none;
-      color: white;
-      font-size: 14px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 600;
       white-space: nowrap;
     }}
 
     .safe-note {{
-      margin-top: 18px;
       display: inline-flex;
-      background: rgba(219,234,254,0.12);
-      border: 1px solid rgba(191,219,254,0.32);
-      color: #bfdbfe;
-      border-radius: 999px;
+      align-items: center;
+      width: fit-content;
+      margin-top: 16px;
       padding: 8px 12px;
+      background: var(--blue-soft);
+      color: #0550ae;
+      border: 1px solid #54aeef;
+      border-radius: 999px;
       font-size: 13px;
+      font-weight: 700;
     }}
 
-    .cards {{
+    .grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 14px;
-      margin-bottom: 24px;
+      margin-bottom: 28px;
     }}
 
     .card {{
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 16px;
+      min-height: 96px;
       padding: 18px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
     }}
 
-    .card.accent {{
-      border-left: 5px solid #2563eb;
-    }}
-
-    .card.high {{
-      border-left: 5px solid #dc2626;
-    }}
-
-    .card.medium {{
-      border-left: 5px solid #f59e0b;
-    }}
-
-    .card.low {{
-      border-left: 5px solid #16a34a;
-    }}
-
-    .label {{
+    .card .label {{
+      margin-bottom: 8px;
       color: var(--muted);
       font-size: 13px;
-      margin-bottom: 8px;
+      font-weight: 600;
     }}
 
-    .value {{
-      font-size: 24px;
+    .card .value {{
+      color: var(--text);
+      font-size: 26px;
       font-weight: 800;
+      line-height: 1.1;
       letter-spacing: -0.02em;
     }}
 
-    .section-title {{
+    .card.high {{
+      border-left-color: var(--red);
+    }}
+
+    .card.medium {{
+      border-left-color: var(--yellow);
+    }}
+
+    .card.low {{
+      border-left-color: var(--green);
+    }}
+
+    .card.high .value {{
+      color: var(--red);
+    }}
+
+    .card.medium .value {{
+      color: var(--yellow);
+    }}
+
+    .card.low .value {{
+      color: var(--green);
+    }}
+
+    h2 {{
+      margin: 0;
+      color: var(--text);
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }}
+
+    .section-header {{
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin: 28px 0 12px 0;
+      gap: 16px;
+      margin: 4px 0 12px;
     }}
 
-    .section-title h2 {{
-      margin: 0;
-      font-size: 20px;
+    .api-badge {{
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      background: #eaeef2;
+      color: #24292f;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
     }}
 
     .table-wrap {{
-      overflow-x: auto;
-      border-radius: 16px;
+      overflow: auto;
+      background: var(--surface);
       border: 1px solid var(--border);
-      background: var(--panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
     }}
 
     table {{
       width: 100%;
+      min-width: 1050px;
       border-collapse: collapse;
-      min-width: 980px;
+      background: var(--surface);
     }}
 
-    th, td {{
-      text-align: left;
-      padding: 13px 14px;
-      border-bottom: 1px solid var(--border);
-      font-size: 14px;
-      vertical-align: top;
+    thead {{
+      background: var(--surface-muted);
     }}
 
     th {{
-      background: #f9fafb;
-      color: #374151;
+      padding: 12px 14px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
       font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }}
-
-    tr:last-child td {{
-      border-bottom: none;
-    }}
-
-    code {{
-      background: #f3f4f6;
-      border: 1px solid #e5e7eb;
-      padding: 2px 6px;
-      border-radius: 6px;
-      font-size: 12px;
-    }}
-
-    a {{
-      color: #2563eb;
-    }}
-
-    .button-link {{
-      display: inline-block;
-      background: var(--blue-bg);
-      color: var(--blue-text);
-      text-decoration: none;
-      border-radius: 999px;
-      padding: 6px 10px;
       font-weight: 700;
-      font-size: 12px;
-    }}
-
-    .badge {{
-      display: inline-flex;
-      border-radius: 999px;
-      padding: 5px 9px;
-      font-size: 12px;
-      font-weight: 800;
-      line-height: 1;
-    }}
-
-    .badge-high {{
-      background: var(--high-bg);
-      color: var(--high-text);
-    }}
-
-    .badge-medium {{
-      background: var(--medium-bg);
-      color: var(--medium-text);
-    }}
-
-    .badge-low {{
-      background: var(--low-bg);
-      color: var(--low-text);
-    }}
-
-    .badge-neutral {{
-      background: #e5e7eb;
-      color: #374151;
-    }}
-
-    .issue-total {{
-      font-weight: 800;
-      margin-bottom: 6px;
-    }}
-
-    .severity-line {{
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-    }}
-
-    .sev {{
-      border-radius: 999px;
-      padding: 3px 7px;
-      font-size: 11px;
-      font-weight: 800;
-    }}
-
-    .sev.high {{
-      background: var(--high-bg);
-      color: var(--high-text);
-    }}
-
-    .sev.medium {{
-      background: var(--medium-bg);
-      color: var(--medium-text);
-    }}
-
-    .sev.low {{
-      background: var(--low-bg);
-      color: var(--low-text);
-    }}
-
-    .nowrap {{
+      text-align: left;
       white-space: nowrap;
     }}
 
-    .error {{
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      color: #991b1b;
-      padding: 12px;
-      border-radius: 12px;
-      margin-bottom: 16px;
+    td {{
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-soft);
+      color: var(--text);
+      font-size: 13px;
+      vertical-align: top;
+    }}
+
+    tbody tr:hover {{
+      background: #f6f8fa;
+    }}
+
+    tbody tr:last-child td {{
+      border-bottom: none;
+    }}
+
+    code,
+    .mono {{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }}
+
+    .badge,
+    .pill,
+    .status {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }}
+
+    .badge.high,
+    .pill.high,
+    .status.block,
+    .status.danger {{
+      background: var(--red-soft);
+      color: var(--red);
+    }}
+
+    .badge.medium,
+    .pill.medium,
+    .status.merged,
+    .status.warning {{
+      background: var(--yellow-soft);
+      color: var(--yellow);
+    }}
+
+    .badge.low,
+    .pill.low,
+    .status.pass,
+    .status.success {{
+      background: var(--green-soft);
+      color: var(--green);
+    }}
+
+    .status.neutral {{
+      background: #eaeef2;
+      color: var(--muted);
+    }}
+
+    .open-link,
+    .button,
+    button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 30px;
+      padding: 5px 10px;
+      background: var(--blue-soft);
+      color: #0550ae;
+      border: 1px solid #b6e3ff;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }}
+
+    .open-link:hover,
+    .button:hover,
+    button:hover {{
+      background: #b6e3ff;
+      text-decoration: none;
     }}
 
     .footer {{
-      margin-top: 20px;
+      margin-top: 24px;
+      padding: 16px 0;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
+      text-align: center;
     }}
 
-    @media (max-width: 720px) {{
+    @media (max-width: 1100px) {{
+      .grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+    }}
+
+    @media (max-width: 700px) {{
       .container {{
+        padding: 16px;
+      }}
+
+      .hero {{
+        flex-direction: column;
         padding: 18px;
       }}
 
-      .top {{
-        flex-direction: column;
-      }}
-
-      h1 {{
+      .hero h1 {{
         font-size: 24px;
       }}
+
+      .grid {{
+        grid-template-columns: 1fr;
+      }}
     }}
-  
+  </style>
 
-/* Safe enterprise dashboard tone: color-only override */
-body {{
-  background: #f6f8fa !important;
-  color: #24292f !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-}}
-
-body::before,
-body::after {{
-  display: none !important;
-  content: none !important;
-}}
-
-.card,
-.panel,
-.hero,
-.header {{
-  background-color: #ffffff !important;
-  border-color: #d0d7de !important;
-  box-shadow: none !important;
-}}
-
-h1,
-h2,
-h3,
-.card .value {{
-  color: #24292f !important;
-  text-shadow: none !important;
-}}
-
-.subtitle,
-.description,
-.card .label,
-.footer,
-th {{
-  color: #57606a !important;
-}}
-
-a {{
-  color: #0969da !important;
-}}
-
-.badge,
-.pill,
-.status,
-.decision {{
-  box-shadow: none !important;
-}}
-
-.glow,
-.gradient,
-.orb,
-.blob,
-.decoration,
-.background-effect {{
-  display: none !important;
-}}
-
-</style>
 </head>
 <body>
   <div class="container">
