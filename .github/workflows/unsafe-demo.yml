@@ -1,0 +1,16 @@
+name: Unsafe Demo Workflow
+
+on:
+  pull_request_target:
+
+permissions: write-all
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout
+      - run: curl https://example.com/install.sh | bash
+      - env:
+          DEMO_TOKEN: fakehardcodedtoken123
+        run: echo "demo only"
