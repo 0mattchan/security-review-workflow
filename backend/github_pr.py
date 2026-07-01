@@ -6,6 +6,61 @@ from google.cloud import secretmanager
 
 PROJECT_ID = "project-cf538dc4-c334-46fa-aac"
 
+GITHUB_API_MAX_ATTEMPTS = 5
+
+def github_api_request(method, url, **kwargs):
+    """
+    GitHub API wrapper with retry for transient SSL/network/server errors.
+    Slack /agent-approve runs multiple GitHub write operations, so a single
+    temporary EOF should not fail the whole remediation workflow.
+    """
+    retry_statuses = {500, 502, 503, 504}
+    last_error = None
+
+    if kwargs.get("timeout") is None:
+        kwargs["timeout"] = 30
+
+    for attempt in range(1, GITHUB_API_MAX_ATTEMPTS + 1):
+        try:
+            response = requests.request(method, url, **kwargs)
+
+            if response.status_code in retry_statuses and attempt < GITHUB_API_MAX_ATTEMPTS:
+                sleep_seconds = min(2 * attempt, 8)
+                print(
+                    "GitHub API request retry: "
+                    f"method={method} url={url} "
+                    f"attempt={attempt}/{GITHUB_API_MAX_ATTEMPTS} "
+                    f"status={response.status_code} sleep_seconds={sleep_seconds}",
+                    flush=True,
+                )
+                time.sleep(sleep_seconds)
+                continue
+
+            return response
+
+        except (
+            requests.exceptions.SSLError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as e:
+            last_error = e
+
+            if attempt >= GITHUB_API_MAX_ATTEMPTS:
+                break
+
+            sleep_seconds = min(2 * attempt, 8)
+            print(
+                "GitHub API request retry: "
+                f"method={method} url={url} "
+                f"attempt={attempt}/{GITHUB_API_MAX_ATTEMPTS} "
+                f"sleep_seconds={sleep_seconds} error={e}",
+                flush=True,
+            )
+            time.sleep(sleep_seconds)
+
+    raise last_error
+
+
 def get_secret(secret_id):
     client = secretmanager.SecretManagerServiceClient()
     name = f"projects/{PROJECT_ID}/secrets/{secret_id}/versions/latest"
@@ -48,7 +103,7 @@ def get_installation_token():
                 "X-GitHub-Api-Version": "2022-11-28"
             }
 
-            response = requests.post(url, headers=headers, timeout=20)
+            response = github_api_request("POST", url, headers=headers, timeout=30)
             response.raise_for_status()
 
             return response.json()["token"]
@@ -81,10 +136,10 @@ def github_headers(accept="application/vnd.github+json"):
 def get_pr_diff(owner, repo, pr_number):
     url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
 
-    response = requests.get(
+    response = github_api_request("GET", 
         url,
         headers=github_headers("application/vnd.github.v3.diff"),
-        timeout=10
+        timeout=30
     )
 
     response.raise_for_status()
@@ -96,11 +151,11 @@ def post_pr_comment(owner, repo, pr_number, body):
         f"{owner}/{repo}/issues/{pr_number}/comments"
     )
 
-    response = requests.post(
+    response = github_api_request("POST", 
         url,
         headers=github_headers(),
         json={"body": body},
-        timeout=10
+        timeout=30
     )
 
     response.raise_for_status()
@@ -109,7 +164,7 @@ def post_pr_comment(owner, repo, pr_number, body):
 def create_pull_request(owner, repo, head, base, title, body):
     url = f"https://api.github.com/repos/{owner}/{repo}/pulls"
 
-    response = requests.post(
+    response = github_api_request("POST", 
         url,
         headers=github_headers(),
         json={
@@ -118,7 +173,7 @@ def create_pull_request(owner, repo, head, base, title, body):
             "base": base,
             "body": body
         },
-        timeout=10
+        timeout=30
     )
 
     if response.status_code == 422:
@@ -140,7 +195,7 @@ DEVSECOPS_COMMENT_MARKER = "<!-- devsecops-ai-agent-review -->"
 def list_issue_comments(owner, repo, issue_number):
     url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
 
-    res = requests.get(
+    res = github_api_request("GET", 
         url,
         headers=github_headers()
     )
@@ -151,7 +206,7 @@ def list_issue_comments(owner, repo, issue_number):
 def update_issue_comment(owner, repo, comment_id, body):
     url = f"https://api.github.com/repos/{owner}/{repo}/issues/comments/{comment_id}"
 
-    res = requests.patch(
+    res = github_api_request("PATCH", 
         url,
         headers=github_headers(),
         json={
@@ -200,7 +255,7 @@ def post_pr_comment(owner, repo, pr_number, body):
 
     url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments"
 
-    res = requests.post(
+    res = github_api_request("POST", 
         url,
         headers=github_headers(),
         json={
@@ -216,10 +271,10 @@ def post_pr_comment(owner, repo, pr_number, body):
 def get_pull_request(owner, repo, pr_number):
     url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
 
-    res = requests.get(
+    res = github_api_request("GET", 
         url,
         headers=github_headers(),
-        timeout=10,
+        timeout=30,
     )
     res.raise_for_status()
     return res.json()
@@ -230,11 +285,11 @@ def list_pr_files(owner, repo, pr_number):
     url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files"
 
     while url:
-        res = requests.get(
+        res = github_api_request("GET", 
             url,
             headers=github_headers(),
             params={"per_page": 100} if "per_page" not in url else None,
-            timeout=10,
+            timeout=30,
         )
         res.raise_for_status()
         files.extend(res.json())
@@ -246,15 +301,26 @@ def list_pr_files(owner, repo, pr_number):
 def create_branch(owner, repo, branch_name, sha):
     url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
 
-    res = requests.post(
+    res = github_api_request("POST", 
         url,
         headers=github_headers(),
         json={
             "ref": f"refs/heads/{branch_name}",
             "sha": sha,
         },
-        timeout=10,
+        timeout=30,
     )
+    if res.status_code == 422 and "Reference already exists" in res.text:
+        ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{branch_name}"
+        existing = github_api_request(
+            "GET",
+            ref_url,
+            headers=github_headers(),
+            timeout=30,
+        )
+        existing.raise_for_status()
+        return existing.json()
+
     res.raise_for_status()
     return res.json()
 
@@ -266,11 +332,11 @@ def get_file_text(owner, repo, path, ref):
     encoded_path = quote(path, safe="/")
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{encoded_path}"
 
-    res = requests.get(
+    res = github_api_request("GET", 
         url,
         headers=github_headers(),
         params={"ref": ref},
-        timeout=10,
+        timeout=30,
     )
     res.raise_for_status()
 
@@ -292,7 +358,7 @@ def update_file_text(owner, repo, path, branch, content, sha, message):
 
     encoded_content = base64.b64encode(content.encode("utf-8")).decode("utf-8")
 
-    res = requests.put(
+    res = github_api_request("PUT", 
         url,
         headers=github_headers(),
         json={
@@ -301,7 +367,7 @@ def update_file_text(owner, repo, path, branch, content, sha, message):
             "sha": sha,
             "branch": branch,
         },
-        timeout=10,
+        timeout=30,
     )
     res.raise_for_status()
     result = res.json()
@@ -388,11 +454,11 @@ def find_existing_remediation_pr(owner, repo, pr_number):
     }
 
     while url:
-        res = requests.get(
+        res = github_api_request("GET", 
             url,
             headers=github_headers(),
             params=params,
-            timeout=10,
+            timeout=30,
         )
         res.raise_for_status()
 
