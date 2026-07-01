@@ -791,7 +791,7 @@ async def dashboard(lang: str = "en"):
     }}
   
 /* Enterprise dashboard override: reduce AI/SaaS-like visual styling */
-:root {
+:root {{
   --bg: #f6f8fa;
   --panel: #ffffff;
   --panel-border: #d0d7de;
@@ -801,33 +801,33 @@ async def dashboard(lang: str = "en"):
   --danger: #cf222e;
   --warning: #9a6700;
   --success: #1a7f37;
-}
+}}
 
-body {
+body {{
   margin: 0 !important;
   background: var(--bg) !important;
   color: var(--text) !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
   line-height: 1.5 !important;
-}
+}}
 
 body::before,
-body::after {
+body::after {{
   display: none !important;
   content: none !important;
-}
+}}
 
 .container,
 .wrapper,
-main {
+main {{
   max-width: 1180px !important;
   margin: 0 auto !important;
   padding: 24px !important;
-}
+}}
 
 .hero,
 .header,
-.page-header {
+.page-header {{
   background: var(--panel) !important;
   color: var(--text) !important;
   border: 1px solid var(--panel-border) !important;
@@ -835,29 +835,29 @@ main {
   box-shadow: none !important;
   padding: 20px 24px !important;
   margin-bottom: 16px !important;
-}
+}}
 
 .hero h1,
 .header h1,
-h1 {
+h1 {{
   color: var(--text) !important;
   font-size: 28px !important;
   font-weight: 650 !important;
   letter-spacing: -0.02em !important;
   margin: 0 0 8px !important;
   text-shadow: none !important;
-}
+}}
 
 .subtitle,
 .description,
 .hero p,
-.header p {
+.header p {{
   color: var(--muted) !important;
   font-size: 14px !important;
   margin: 0 !important;
-}
+}}
 
-.safe-note {
+.safe-note {{
   background: #ddf4ff !important;
   color: #0969da !important;
   border: 1px solid #54aeef !important;
@@ -865,18 +865,18 @@ h1 {
   box-shadow: none !important;
   padding: 10px 12px !important;
   font-weight: 600 !important;
-}
+}}
 
 .grid,
 .cards,
-.summary-grid {
+.summary-grid {{
   display: grid !important;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
   gap: 12px !important;
   margin: 16px 0 !important;
-}
+}}
 
-.card {
+.card {{
   background: var(--panel) !important;
   border: 1px solid var(--panel-border) !important;
   border-radius: 8px !important;
@@ -884,71 +884,71 @@ h1 {
   padding: 16px !important;
   color: var(--text) !important;
   transform: none !important;
-}
+}}
 
-.card:hover {
+.card:hover {{
   transform: none !important;
   box-shadow: none !important;
-}
+}}
 
-.card .label {
+.card .label {{
   color: var(--muted) !important;
   font-size: 13px !important;
   font-weight: 600 !important;
   text-transform: none !important;
   letter-spacing: 0 !important;
-}
+}}
 
-.card .value {
+.card .value {{
   color: var(--text) !important;
   font-size: 28px !important;
   font-weight: 700 !important;
   margin-top: 6px !important;
-}
+}}
 
-.card.high {
+.card.high {{
   border-left: 4px solid var(--danger) !important;
-}
+}}
 
-.card.medium {
+.card.medium {{
   border-left: 4px solid var(--warning) !important;
-}
+}}
 
-.card.low {
+.card.low {{
   border-left: 4px solid var(--success) !important;
-}
+}}
 
-.card.high .value {
+.card.high .value {{
   color: var(--danger) !important;
-}
+}}
 
-.card.medium .value {
+.card.medium .value {{
   color: var(--warning) !important;
-}
+}}
 
-.card.low .value {
+.card.low .value {{
   color: var(--success) !important;
-}
+}}
 
 section,
 .panel,
-.table-panel {
+.table-panel {{
   background: var(--panel) !important;
   border: 1px solid var(--panel-border) !important;
   border-radius: 8px !important;
   box-shadow: none !important;
   padding: 16px !important;
   margin: 16px 0 !important;
-}
+}}
 
-h2 {
+h2 {{
   color: var(--text) !important;
   font-size: 18px !important;
   font-weight: 650 !important;
   margin: 0 0 12px !important;
-}
+}}
 
-table {
+table {{
   width: 100% !important;
   border-collapse: collapse !important;
   background: var(--panel) !important;
@@ -956,60 +956,60 @@ table {
   border-radius: 8px !important;
   overflow: hidden !important;
   box-shadow: none !important;
-}
+}}
 
-thead {
+thead {{
   background: #f6f8fa !important;
-}
+}}
 
-th {
+th {{
   color: var(--muted) !important;
   font-size: 12px !important;
   font-weight: 650 !important;
   text-align: left !important;
   padding: 10px 12px !important;
   border-bottom: 1px solid var(--panel-border) !important;
-}
+}}
 
-td {
+td {{
   color: var(--text) !important;
   font-size: 14px !important;
   padding: 10px 12px !important;
   border-bottom: 1px solid #d8dee4 !important;
-}
+}}
 
-tr:last-child td {
+tr:last-child td {{
   border-bottom: none !important;
-}
+}}
 
-tr:hover {
+tr:hover {{
   background: #f6f8fa !important;
-}
+}}
 
 .badge,
 .decision,
 .status,
-.pill {
+.pill {{
   border-radius: 999px !important;
   padding: 3px 8px !important;
   font-size: 12px !important;
   font-weight: 650 !important;
   border: 1px solid var(--panel-border) !important;
   box-shadow: none !important;
-}
+}}
 
-a {
+a {{
   color: var(--primary) !important;
   text-decoration: none !important;
-}
+}}
 
-a:hover {
+a:hover {{
   text-decoration: underline !important;
-}
+}}
 
 button,
 .button,
-.btn {
+.btn {{
   background: #f6f8fa !important;
   color: var(--text) !important;
   border: 1px solid var(--panel-border) !important;
@@ -1017,15 +1017,15 @@ button,
   box-shadow: none !important;
   padding: 8px 12px !important;
   font-weight: 600 !important;
-}
+}}
 
 button:hover,
 .button:hover,
-.btn:hover {
+.btn:hover {{
   background: #eef1f4 !important;
-}
+}}
 
-.footer {
+.footer {{
   color: var(--muted) !important;
   background: transparent !important;
   border: none !important;
@@ -1033,7 +1033,7 @@ button:hover,
   font-size: 12px !important;
   text-align: center !important;
   margin-top: 24px !important;
-}
+}}
 
 /* Remove decorative AI-like effects if present */
 .glow,
@@ -1041,9 +1041,9 @@ button:hover,
 .orb,
 .blob,
 .decoration,
-.background-effect {
+.background-effect {{
   display: none !important;
-}
+}}
 
 </style>
 </head>
