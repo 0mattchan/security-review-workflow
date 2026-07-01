@@ -14,9 +14,9 @@ spec:
     spec:
       containers:
         - name: app
-          image: nginx:latest
+          image: nginx:stable
           securityContext:
-            privileged: true
+            privileged: false
             allowPrivilegeEscalation: true
             runAsNonRoot: false
             runAsUser: 0
