@@ -41,3 +41,9 @@ flowchart TD
 - Web Dashboard で重要度別件数と履歴を可視化
 - Cloud Build でデプロイ
 - Secret Manager で GitHub / Slack 関連の秘密情報を管理
+
+## 採用するシステム構成図
+
+![Security Review Workflow Architecture](assets/architecture.png)
+
+この図を ProtoPedia のシステム構成図として使用する。
