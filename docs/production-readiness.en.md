@@ -51,7 +51,7 @@
 - status
 - remediation_pr_url
 
-### 5. AI action levels
+### 5. Action level controls
 
 | Level | Behavior |
 |---|---|

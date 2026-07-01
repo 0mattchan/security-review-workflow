@@ -345,7 +345,7 @@ async def dashboard(lang: str = "en"):
         "api": "API",
         "switch": "English" if is_ja else "日本語",
         "switch_url": "/dashboard?lang=en" if is_ja else "/dashboard?lang=ja",
-        "safe_note": "L2: 承認後に修正PRを作成。自動適用は無効です。" if is_ja else "L2: remediation PRs require approval. Auto apply is disabled.",
+        "safe_note": "L2: 承認後に修正PRを作成。本番反映は人が判断します。" if is_ja else "L2: remediation PRs require approval. Production changes remain human-controlled.",
         "open": "開く" if is_ja else "Open",
     }
 
@@ -790,25 +790,12 @@ async def dashboard(lang: str = "en"):
       }}
     }}
   
-/* Enterprise dashboard override: reduce AI/SaaS-like visual styling */
-:root {{
-  --bg: #f6f8fa;
-  --panel: #ffffff;
-  --panel-border: #d0d7de;
-  --text: #24292f;
-  --muted: #57606a;
-  --primary: #0969da;
-  --danger: #cf222e;
-  --warning: #9a6700;
-  --success: #1a7f37;
-}}
 
+/* Safe enterprise dashboard tone: color-only override */
 body {{
-  margin: 0 !important;
-  background: var(--bg) !important;
-  color: var(--text) !important;
+  background: #f6f8fa !important;
+  color: #24292f !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-  line-height: 1.5 !important;
 }}
 
 body::before,
@@ -817,225 +804,42 @@ body::after {{
   content: none !important;
 }}
 
-.container,
-.wrapper,
-main {{
-  max-width: 1180px !important;
-  margin: 0 auto !important;
-  padding: 24px !important;
-}}
-
+.card,
+.panel,
 .hero,
-.header,
-.page-header {{
-  background: var(--panel) !important;
-  color: var(--text) !important;
-  border: 1px solid var(--panel-border) !important;
-  border-radius: 8px !important;
+.header {{
+  background-color: #ffffff !important;
+  border-color: #d0d7de !important;
   box-shadow: none !important;
-  padding: 20px 24px !important;
-  margin-bottom: 16px !important;
 }}
 
-.hero h1,
-.header h1,
-h1 {{
-  color: var(--text) !important;
-  font-size: 28px !important;
-  font-weight: 650 !important;
-  letter-spacing: -0.02em !important;
-  margin: 0 0 8px !important;
+h1,
+h2,
+h3,
+.card .value {{
+  color: #24292f !important;
   text-shadow: none !important;
 }}
 
 .subtitle,
 .description,
-.hero p,
-.header p {{
-  color: var(--muted) !important;
-  font-size: 14px !important;
-  margin: 0 !important;
-}}
-
-.safe-note {{
-  background: #ddf4ff !important;
-  color: #0969da !important;
-  border: 1px solid #54aeef !important;
-  border-radius: 6px !important;
-  box-shadow: none !important;
-  padding: 10px 12px !important;
-  font-weight: 600 !important;
-}}
-
-.grid,
-.cards,
-.summary-grid {{
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
-  gap: 12px !important;
-  margin: 16px 0 !important;
-}}
-
-.card {{
-  background: var(--panel) !important;
-  border: 1px solid var(--panel-border) !important;
-  border-radius: 8px !important;
-  box-shadow: none !important;
-  padding: 16px !important;
-  color: var(--text) !important;
-  transform: none !important;
-}}
-
-.card:hover {{
-  transform: none !important;
-  box-shadow: none !important;
-}}
-
-.card .label {{
-  color: var(--muted) !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  text-transform: none !important;
-  letter-spacing: 0 !important;
-}}
-
-.card .value {{
-  color: var(--text) !important;
-  font-size: 28px !important;
-  font-weight: 700 !important;
-  margin-top: 6px !important;
-}}
-
-.card.high {{
-  border-left: 4px solid var(--danger) !important;
-}}
-
-.card.medium {{
-  border-left: 4px solid var(--warning) !important;
-}}
-
-.card.low {{
-  border-left: 4px solid var(--success) !important;
-}}
-
-.card.high .value {{
-  color: var(--danger) !important;
-}}
-
-.card.medium .value {{
-  color: var(--warning) !important;
-}}
-
-.card.low .value {{
-  color: var(--success) !important;
-}}
-
-section,
-.panel,
-.table-panel {{
-  background: var(--panel) !important;
-  border: 1px solid var(--panel-border) !important;
-  border-radius: 8px !important;
-  box-shadow: none !important;
-  padding: 16px !important;
-  margin: 16px 0 !important;
-}}
-
-h2 {{
-  color: var(--text) !important;
-  font-size: 18px !important;
-  font-weight: 650 !important;
-  margin: 0 0 12px !important;
-}}
-
-table {{
-  width: 100% !important;
-  border-collapse: collapse !important;
-  background: var(--panel) !important;
-  border: 1px solid var(--panel-border) !important;
-  border-radius: 8px !important;
-  overflow: hidden !important;
-  box-shadow: none !important;
-}}
-
-thead {{
-  background: #f6f8fa !important;
-}}
-
+.card .label,
+.footer,
 th {{
-  color: var(--muted) !important;
-  font-size: 12px !important;
-  font-weight: 650 !important;
-  text-align: left !important;
-  padding: 10px 12px !important;
-  border-bottom: 1px solid var(--panel-border) !important;
-}}
-
-td {{
-  color: var(--text) !important;
-  font-size: 14px !important;
-  padding: 10px 12px !important;
-  border-bottom: 1px solid #d8dee4 !important;
-}}
-
-tr:last-child td {{
-  border-bottom: none !important;
-}}
-
-tr:hover {{
-  background: #f6f8fa !important;
-}}
-
-.badge,
-.decision,
-.status,
-.pill {{
-  border-radius: 999px !important;
-  padding: 3px 8px !important;
-  font-size: 12px !important;
-  font-weight: 650 !important;
-  border: 1px solid var(--panel-border) !important;
-  box-shadow: none !important;
+  color: #57606a !important;
 }}
 
 a {{
-  color: var(--primary) !important;
-  text-decoration: none !important;
+  color: #0969da !important;
 }}
 
-a:hover {{
-  text-decoration: underline !important;
-}}
-
-button,
-.button,
-.btn {{
-  background: #f6f8fa !important;
-  color: var(--text) !important;
-  border: 1px solid var(--panel-border) !important;
-  border-radius: 6px !important;
+.badge,
+.pill,
+.status,
+.decision {{
   box-shadow: none !important;
-  padding: 8px 12px !important;
-  font-weight: 600 !important;
 }}
 
-button:hover,
-.button:hover,
-.btn:hover {{
-  background: #eef1f4 !important;
-}}
-
-.footer {{
-  color: var(--muted) !important;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  font-size: 12px !important;
-  text-align: center !important;
-  margin-top: 24px !important;
-}}
-
-/* Remove decorative AI-like effects if present */
 .glow,
 .gradient,
 .orb,

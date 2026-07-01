@@ -17,7 +17,7 @@ levels:
     allow_auto_apply: false
 
   L3:
-    description: "Autonomous remediation mode. Keep disabled unless explicitly approved for controlled environments."
+    description: "Approval-free remediation mode. Keep disabled unless explicitly approved for controlled environments."
     allow_pr_comment: true
     allow_slack_notification: true
     allow_remediation_pr: true
