@@ -13,3 +13,4 @@ frontend/web/dist/
 _local_backups/
 *.bak*
 _audit_reports/
+.DS_Store
